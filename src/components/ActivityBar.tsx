@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getActivities } from "../features/connection/activityRegistry";
+import { useNavigationStore } from "../stores/navigationStore";
 import { cn } from "../lib/cn";
 
 interface ActivityBarProps {
@@ -9,8 +10,24 @@ interface ActivityBarProps {
 
 export function ActivityBar({ connectionId, defaultActivityId = "files" }: ActivityBarProps) {
   const [activeId, setActiveId] = useState(defaultActivityId);
+  const activityRequest = useNavigationStore((s) => s.activityRequest);
+  const consumeActivityRequest = useNavigationStore((s) => s.consumeActivityRequest);
   const activities = getActivities();
   const active = activities.find((a) => a.id === activeId) ?? activities[0];
+
+  useEffect(() => {
+    if (!activityRequest) return;
+    if (activityRequest.connectionId !== connectionId) return;
+    if (activityRequest.activityId === activeId) {
+      consumeActivityRequest();
+      return;
+    }
+    const exists = activities.some((a) => a.id === activityRequest.activityId);
+    if (exists) {
+      setActiveId(activityRequest.activityId);
+    }
+    consumeActivityRequest();
+  }, [activityRequest, connectionId, activeId, activities, consumeActivityRequest]);
 
   return (
     <div className="flex h-full w-full overflow-hidden">

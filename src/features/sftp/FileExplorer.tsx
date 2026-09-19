@@ -4,6 +4,7 @@ import { sftpService } from "../../services/sftpService";
 import { terminalService } from "../../services/terminalService";
 import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
 import { useFileClipboardStore } from "../../stores/fileClipboardStore";
+import { useNavigationStore } from "../../stores/navigationStore";
 import { dialogAlert, dialogConfirm, dialogPrompt } from "../../lib/dialog";
 import type { FileEntry } from "../../types/sftp";
 import {
@@ -408,6 +409,18 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
     },
     [loadDir],
   );
+
+  const navigateRequest = useNavigationStore((s) => s.navigateRequest);
+  const consumeNavigateRequest = useNavigationStore(
+    (s) => s.consumeNavigateRequest,
+  );
+
+  useEffect(() => {
+    if (!navigateRequest) return;
+    if (navigateRequest.connectionId !== connectionId) return;
+    void navigateToPath(navigateRequest.path, navigateRequest.isDir);
+    consumeNavigateRequest();
+  }, [navigateRequest, connectionId, navigateToPath, consumeNavigateRequest]);
 
   useEffect(() => {
     if (!menu) return;

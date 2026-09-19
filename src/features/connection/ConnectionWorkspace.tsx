@@ -3,6 +3,7 @@ import { FileExplorer } from "../sftp/FileExplorer";
 import { TerminalManager } from "../terminal/TerminalManager";
 import { CommandPalette } from "../command/CommandPalette";
 import { PerformancePanel } from "../performance/PerformancePanel";
+import { SearchPanel } from "../search/SearchPanel";
 import { registerPanel, getPanels } from "./panelRegistry";
 import { registerActivity } from "./activityRegistry";
 import { ActivityBar } from "../../components/ActivityBar";
@@ -31,7 +32,7 @@ registerActivity({
   id: "search",
   name: "搜索",
   icon: Search,
-  render: () => <EmptyActivity title="搜索" />,
+  render: (id) => <SearchPanel connectionId={id} />,
 });
 registerActivity({
   id: "commands",
