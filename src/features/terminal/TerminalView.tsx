@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { listen } from "@tauri-apps/api/event";
@@ -9,6 +9,39 @@ import { useThemeStore } from "../../stores/themeStore";
 import { useCommandStore } from "../../stores/commandStore";
 import { TERMINAL_DATA_EVENT, TERMINAL_EXIT_EVENT } from "../../types/events";
 import type { TerminalDataPayload, TerminalExitPayload } from "../../types/events";
+
+function mochaTheme(background: string, cursorAccent: string): ITheme {
+  return {
+    background,
+    foreground: "#cdd6f4",
+    cursor: "#f5e0dc",
+    cursorAccent,
+    selectionBackground: "#45475a",
+    black: "#45475a",
+    red: "#f38ba8",
+    green: "#a6e3a1",
+    yellow: "#f9e2af",
+    blue: "#89b4fa",
+    magenta: "#f5c2e7",
+    cyan: "#94e2d5",
+    white: "#bac2de",
+    brightBlack: "#585b70",
+    brightRed: "#f38ba8",
+    brightGreen: "#a6e3a1",
+    brightYellow: "#f9e2af",
+    brightBlue: "#89b4fa",
+    brightMagenta: "#f5c2e7",
+    brightCyan: "#94e2d5",
+    brightWhite: "#a6adc8",
+  };
+}
+
+const TERMINAL_THEME_DARK = mochaTheme("#0a0a0f", "#0a0a0f");
+const TERMINAL_THEME_LIGHT = mochaTheme("#1e1e2e", "#1e1e2e");
+
+function terminalTheme(dark: boolean): ITheme {
+  return dark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT;
+}
 
 interface TerminalViewProps {
   connectionId: string;
@@ -49,12 +82,7 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
       fontSize: 14,
       cursorBlink: true,
       allowProposedApi: true,
-      theme: {
-        background: "#1e1e2e",
-        foreground: "#cdd6f4",
-        cursor: "#f5e0dc",
-        selectionBackground: "#45475a",
-      },
+      theme: terminalTheme(dark),
     });
     termRef.current = term;
 
@@ -114,6 +142,13 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
       termRef.current = null;
     };
   }, [connectionId, terminalId]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = terminalTheme(dark);
+    term.refresh(0, term.rows - 1);
+  }, [dark]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

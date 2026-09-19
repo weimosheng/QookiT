@@ -12,6 +12,7 @@ import { TerminalView } from "./TerminalView";
 import { Plus, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
+import { useThemeStore } from "../../stores/themeStore";
 import {
   type LayoutNode,
   type PaneNode,
@@ -51,6 +52,7 @@ export function TerminalManager({ connectionId }: TerminalManagerProps) {
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<{ paneId: string; zone: DropZone } | null>(null);
+  const dark = useThemeStore((s) => s.dark);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<LayoutNode | null>(null);
@@ -275,7 +277,10 @@ export function TerminalManager({ connectionId }: TerminalManagerProps) {
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-[#1e1e2e]"
+      className={cn(
+        "relative h-full w-full overflow-hidden",
+        dark ? "bg-[#0a0a0f]" : "bg-[#1e1e2e]",
+      )}
     >
       {Object.values(terminals).map((t) => {
         const rect = paneRects[t.paneId];

@@ -2,6 +2,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { FileExplorer } from "../sftp/FileExplorer";
 import { TerminalManager } from "../terminal/TerminalManager";
 import { CommandPalette } from "../command/CommandPalette";
+import { PerformancePanel } from "../performance/PerformancePanel";
 import { registerPanel, getPanels } from "./panelRegistry";
 import { registerActivity } from "./activityRegistry";
 import { ActivityBar } from "../../components/ActivityBar";
@@ -42,7 +43,7 @@ registerActivity({
   id: "performance",
   name: "性能",
   icon: Gauge,
-  render: () => <EmptyActivity title="性能面板" />,
+  render: (id) => <PerformancePanel connectionId={id} />,
 });
 registerActivity({
   id: "extensions",
