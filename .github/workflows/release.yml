@@ -35,18 +35,17 @@ jobs:
           - platform: windows-latest
             target: windows-x64
             rust_target: x86_64-pc-windows-msvc
+            toolchain_targets: x86_64-pc-windows-msvc
             bundles: msi,nsis
           - platform: macos-14
-            target: macos-arm64
-            rust_target: aarch64-apple-darwin
-            bundles: dmg
-          - platform: macos-13
-            target: macos-x64
-            rust_target: x86_64-apple-darwin
+            target: macos-universal
+            rust_target: universal-apple-darwin
+            toolchain_targets: aarch64-apple-darwin x86_64-apple-darwin
             bundles: dmg
           - platform: ubuntu-22.04
             target: linux-x64
             rust_target: x86_64-unknown-linux-gnu
+            toolchain_targets: x86_64-unknown-linux-gnu
             bundles: deb,rpm,appimage
     runs-on: ${{ matrix.platform }}
     steps:
@@ -97,7 +96,7 @@ jobs:
       - name: 安装 Rust 稳定工具链
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_target }}
+          targets: ${{ matrix.toolchain_targets }}
 
       - name: 缓存 Cargo 产物
         uses: Swatinem/rust-cache@v2
@@ -227,12 +226,12 @@ jobs:
 
             ### 安装包
             - **Windows**：`.msi`（系统安装）或 NSIS `.exe` 安装器
-            - **macOS**：`.dmg`（拖入 Applications 安装）
+            - **macOS**：`.dmg`（universal，Apple Silicon 与 Intel 通用；拖入 Applications 安装）
             - **Linux**：`.deb`（Debian/Ubuntu）、`.rpm`（Fedora/RedHat）
 
             ### 便携式
             - **Windows**：`*-portable.zip`（解压即用单文件）
-            - **macOS**：`*-portable.tar.gz`（解压得到 `.app`）
+            - **macOS**：`*-portable.tar.gz`（universal；解压得到 `.app`）
             - **Linux**：`*.AppImage`（单文件可直接运行）或 `*-portable.tar.gz`
 
             > macOS 版本未做代码签名与公证，首次打开请在「系统设置 → 隐私与安全性」点击「仍要打开」。
