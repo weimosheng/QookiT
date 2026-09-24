@@ -1,0 +1,238 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '发布标签，例如 v0.1.0'
+        required: true
+        default: 'v0.1.0'
+      prerelease:
+        description: '是否为预发布 (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PRODUCT_NAME: QookiT
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: windows-x64
+            rust_target: x86_64-pc-windows-msvc
+            bundles: msi,nsis
+          - platform: macos-14
+            target: macos-arm64
+            rust_target: aarch64-apple-darwin
+            bundles: dmg
+          - platform: macos-13
+            target: macos-x64
+            rust_target: x86_64-apple-darwin
+            bundles: dmg
+          - platform: ubuntu-22.04
+            target: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+            bundles: deb,rpm,appimage
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 解析版本号
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "解析得到 tag=$TAG version=$VERSION"
+
+      - name: 安装系统依赖 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libfuse2
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装 Rust 稳定工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: 缓存 Cargo 产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 Tauri 应用
+        run: pnpm tauri build --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}
+        env:
+          CI: true
+
+      - name: 收集产物 (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUNDLE="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          STAGING="artifacts"
+          mkdir -p "$STAGING"
+          # 安装包：MSI 与 NSIS exe
+          find "$BUNDLE/msi"  -name '*.msi' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/nsis" -name '*.exe' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          # 便携式：单文件可执行程序（Tauri 2 资源默认嵌入二进制）
+          EXE="src-tauri/target/${{ matrix.rust_target }}/release/qookit.exe"
+          if [ -f "$EXE" ]; then
+            7z a "$STAGING/${PRODUCT_NAME}_${VERSION}_x64-portable.zip" "$EXE"
+          fi
+          echo "=== Windows 产物 ==="
+          ls -lh "$STAGING"
+
+      - name: 收集产物 (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUNDLE="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          STAGING="artifacts"
+          mkdir -p "$STAGING"
+          # 安装包：dmg
+          find "$BUNDLE/dmg" -name '*.dmg' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          # 便携式：打包 .app 目录
+          APP=$(find "$BUNDLE/macos" -name '*.app' -type d | head -n1)
+          if [ -n "$APP" ]; then
+            ARCH_TAG="${{ matrix.target }}"
+            ARCH="${ARCH_TAG#macos-}"
+            tar -czf "$STAGING/${PRODUCT_NAME}_${VERSION}_${ARCH}-portable.tar.gz" -C "$BUNDLE/macos" "$(basename "$APP")"
+          fi
+          echo "=== macOS 产物 ==="
+          ls -lh "$STAGING"
+
+      - name: 收集产物 (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUNDLE="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          STAGING="artifacts"
+          mkdir -p "$STAGING"
+          # 安装包：deb / rpm
+          find "$BUNDLE/deb" -name '*.deb' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/rpm" -name '*.rpm' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          # 便携式：AppImage（单文件可直接运行）
+          find "$BUNDLE/appimage" -name '*.AppImage' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          # 便携式：裸可执行文件 tar.gz
+          BIN="src-tauri/target/${{ matrix.rust_target }}/release/qookit"
+          if [ -f "$BIN" ]; then
+            tar -czf "$STAGING/${PRODUCT_NAME}_${VERSION}_amd64-portable.tar.gz" -C "src-tauri/target/${{ matrix.rust_target }}/release" qookit
+          fi
+          echo "=== Linux 产物 ==="
+          ls -lh "$STAGING"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 解析版本号
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+            PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            PRERELEASE="false"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: 列出待发布文件
+        shell: bash
+        run: |
+          echo "=== 待发布文件 ==="
+          find release-assets -type f -exec ls -lh {} \;
+
+      - name: 创建 Release 并上传资产
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: true
+          files: release-assets/*
+          body: |
+            ## QookiT ${{ steps.version.outputs.version }}
+
+            ### 安装包
+            - **Windows**：`.msi`（系统安装）或 NSIS `.exe` 安装器
+            - **macOS**：`.dmg`（拖入 Applications 安装）
+            - **Linux**：`.deb`（Debian/Ubuntu）、`.rpm`（Fedora/RedHat）
+
+            ### 便携式
+            - **Windows**：`*-portable.zip`（解压即用单文件）
+            - **macOS**：`*-portable.tar.gz`（解压得到 `.app`）
+            - **Linux**：`*.AppImage`（单文件可直接运行）或 `*-portable.tar.gz`
+
+            > macOS 版本未做代码签名与公证，首次打开请在「系统设置 → 隐私与安全性」点击「仍要打开」。

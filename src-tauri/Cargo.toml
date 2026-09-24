@@ -45,10 +45,11 @@ env_logger = "0.11"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 
-# 优化配置参考 https://tauri.app/concept/size/#cargo-configuration
+# 发布配置：thin LTO + 多 codegen 单元，兼顾体积与 CI 编译速度
+# 参考 https://tauri.app/concept/size/#cargo-configuration （原 fat LTO+codegen-units=1 体积最优但编译极慢）
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true

@@ -39,6 +39,44 @@ function mochaTheme(background: string, cursorAccent: string): ITheme {
 const TERMINAL_THEME_DARK = mochaTheme("#0a0a0f", "#0a0a0f");
 const TERMINAL_THEME_LIGHT = mochaTheme("#1e1e2e", "#1e1e2e");
 
+const terminalBuffers = new Map<string, string>();
+const discardedTerminals = new Set<string>();
+
+export function discardTerminalBuffer(terminalId: string): void {
+  discardedTerminals.add(terminalId);
+  terminalBuffers.delete(terminalId);
+}
+
+function saveBuffer(terminalId: string, term: Terminal): void {
+  if (discardedTerminals.has(terminalId)) {
+    discardedTerminals.delete(terminalId);
+    return;
+  }
+  const buffer = term.buffer.active;
+  const lines: string[] = [];
+  for (let i = 0; i < buffer.length; i++) {
+    const line = buffer.getLine(i);
+    if (line) {
+      lines.push(line.translateToString(true));
+    }
+  }
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === "") start++;
+  while (end > start && lines[end - 1].trim() === "") end--;
+  if (start < end) {
+    terminalBuffers.set(terminalId, lines.slice(start, end).join("\r\n") + "\r\n");
+  }
+}
+
+function restoreBuffer(terminalId: string, term: Terminal): void {
+  const content = terminalBuffers.get(terminalId);
+  if (content) {
+    term.write(content);
+    terminalBuffers.delete(terminalId);
+  }
+}
+
 function terminalTheme(dark: boolean): ITheme {
   return dark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT;
 }
@@ -77,6 +115,8 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
   useEffect(() => {
     if (!containerRef.current) return;
 
+    let disposed = false;
+
     const term = new Terminal({
       fontFamily: "Consolas, Monaco, 'Courier New', monospace",
       fontSize: 14,
@@ -91,6 +131,7 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
     fitAddon.fit();
+    restoreBuffer(terminalId, term);
 
     const dataDisposable = term.onData((data) => {
       terminalService.write(connectionId, terminalId, data);
@@ -110,6 +151,7 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     });
 
     const unlistenData = listen<TerminalDataPayload>(TERMINAL_DATA_EVENT, (event) => {
+      if (disposed) return;
       if (event.payload.terminal_id === terminalId) {
         term.write(base64ToBytes(event.payload.data));
       }
@@ -132,6 +174,8 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      disposed = true;
+      saveBuffer(terminalId, term);
       dataDisposable.dispose();
       resizeDisposable.dispose();
       selectionDisposable.dispose();

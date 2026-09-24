@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { sftpService } from "../../services/sftpService";
 import { useNavigationStore } from "../../stores/navigationStore";
+import { useDockStore } from "../dock/dockStore";
 import { cn } from "../../lib/cn";
 import {
   Search as SearchIcon,
@@ -192,7 +193,8 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const navigateToFile = useNavigationStore((s) => s.navigateToFile);
+  const openTab = useDockStore((s) => s.openTab);
+  const requestNavigate = useNavigationStore((s) => s.requestNavigate);
 
   const runSearch = useCallback(async () => {
     const q = query.trim();
@@ -247,8 +249,15 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
     });
   };
 
-  const handleJump = (path: string) => {
-    navigateToFile(connectionId, path, false);
+  const handleJump = async (path: string) => {
+    const tabs = useDockStore.getState().byConnection[connectionId]?.tabs;
+    const hasFiles = Object.values(tabs ?? {}).some(
+      (t) => t.toolTypeId === "files",
+    );
+    if (!hasFiles) {
+      await openTab(connectionId, "files", "center");
+    }
+    requestNavigate(connectionId, path, false);
   };
 
   const canSearch = query.trim().length > 0 && !searching;

@@ -56,6 +56,8 @@ pub fn run() {
             commands::sftp::sftp_canonicalize,
             commands::sftp::ssh_exec,
             commands::performance::performance_sample,
+            commands::layout::read_layout_templates,
+            commands::layout::write_layout_templates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
