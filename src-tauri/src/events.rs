@@ -1,5 +1,6 @@
 pub const EVENT_TERMINAL_DATA: &str = "terminal:data";
 pub const EVENT_TERMINAL_EXIT: &str = "terminal:exit";
+#[allow(dead_code)]
 pub const EVENT_CONNECTION_CLOSED: &str = "connection:closed";
 pub const EVENT_CONNECTION_LOG: &str = "connection:log";
 
@@ -17,6 +18,7 @@ pub struct TerminalExitPayload {
     pub exit_code: Option<u32>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, serde::Serialize)]
 pub struct ConnectionClosedPayload {
     pub connection_id: String,

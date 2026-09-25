@@ -15,6 +15,7 @@ enum TerminalCommand {
     Close,
 }
 
+#[allow(dead_code)]
 pub struct TerminalChannel {
     pub id: String,
     sender: mpsc::UnboundedSender<TerminalCommand>,

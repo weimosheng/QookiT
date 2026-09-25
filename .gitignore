@@ -27,6 +27,10 @@ lerna-debug.log*
 .copilot/
 temp/
 
+# ---------- Python 缓存 ----------
+__pycache__/
+*.pyc
+
 # ---------- 凭据与证书（切勿提交） ----------
 *.pem
 *.key

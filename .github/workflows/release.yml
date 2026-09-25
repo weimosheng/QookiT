@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '发布标签，例如 v0.1.0'
+        description: '发布标签，例如 v0.3.0'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.3.0'
       prerelease:
         description: '是否为预发布 (true/false)'
         required: false
@@ -36,7 +36,7 @@ jobs:
             target: windows-x64
             rust_target: x86_64-pc-windows-msvc
             toolchain_targets: x86_64-pc-windows-msvc
-            bundles: msi,nsis
+            bundles: nsis
           - platform: macos-14
             target: macos-universal
             rust_target: universal-apple-darwin
@@ -119,16 +119,70 @@ jobs:
           BUNDLE="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
           STAGING="artifacts"
           mkdir -p "$STAGING"
-          # 安装包：MSI 与 NSIS exe
-          find "$BUNDLE/msi"  -name '*.msi' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          # 安装包：NSIS exe（MSIX 在后续步骤生成）
           find "$BUNDLE/nsis" -name '*.exe' -exec cp {} "$STAGING/" \; 2>/dev/null || true
           # 便携式：单文件可执行程序（Tauri 2 资源默认嵌入二进制）
           EXE="src-tauri/target/${{ matrix.rust_target }}/release/qookit.exe"
           if [ -f "$EXE" ]; then
             7z a "$STAGING/${PRODUCT_NAME}_${VERSION}_x64-portable.zip" "$EXE"
           fi
-          echo "=== Windows 产物 ==="
+          echo "=== Windows 产物（不含 MSIX）==="
           ls -lh "$STAGING"
+
+      - name: 生成 MSIX 包
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $ErrorActionPreference = "Stop"
+          $staging = "msix-staging"
+          New-Item -ItemType Directory -Force -Path "$staging\assets" | Out-Null
+          $exe = "src-tauri\target\${{ matrix.rust_target }}\release\qookit.exe"
+          if (-not (Test-Path $exe)) { Write-Host "exe 不存在，跳过 MSIX"; exit 0 }
+          Copy-Item $exe "$staging\"
+          $icons = "src-tauri\icons"
+          Copy-Item "$icons\128x128.png"    "$staging\assets\StoreLogo.png"
+          Copy-Item "$icons\128x128.png"    "$staging\assets\Square150x150Logo.png"
+          Copy-Item "$icons\32x32.png"      "$staging\assets\Square44x44Logo.png"
+          Copy-Item "$icons\128x128@2x.png" "$staging\assets\Wide310x150Logo.png"
+          Copy-Item "$icons\128x128@2x.png" "$staging\assets\Square310x310Logo.png"
+          Copy-Item "$icons\128x128.png"    "$staging\assets\SplashScreen.png"
+          $pkgName = "${{ vars.MSIX_PACKAGE_NAME }}"
+          $publisher = "${{ vars.MSIX_PUBLISHER }}"
+          if (-not $pkgName)   { $pkgName = "QookiT" }
+          if (-not $publisher) { $publisher = "CN=QookiT" }
+          $manifest = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
+          $manifest = $manifest -replace "__PACKAGE_NAME__", $pkgName
+          $manifest = $manifest -replace "__PUBLISHER__", $publisher
+          $manifest = $manifest -replace "__VERSION__", $version
+          Set-Content "$staging\AppxManifest.xml" $manifest -Encoding UTF8
+          $sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin"
+          $latest = (Get-ChildItem $sdkBin -Directory | Where-Object { $_.Name -match "^\d" } | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          $makeAppx = Join-Path $latest "x64\MakeAppx.exe"
+          $signTool  = Join-Path $latest "x64\signtool.exe"
+          Write-Host "使用 SDK 工具: $makeAppx"
+          $certPfxB64 = "${{ secrets.MSIX_CERT_PFX_B64 }}"
+          $certPwd    = "${{ secrets.MSIX_CERT_PASSWORD }}"
+          if ($certPfxB64) {
+            [System.IO.File]::WriteAllBytes("$PWD\sign-cert.pfx", [System.Convert]::FromBase64String($certPfxB64))
+            $signCert = "sign-cert.pfx"
+            $signPass = $certPwd
+            Write-Host "使用正式代码签名证书（可上 Microsoft Store）"
+          } else {
+            Write-Host "使用自签名证书（Subject 匹配 Publisher）；上传 Microsoft Store 后 Store 会重新签名，无需购买正式证书"
+            $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $publisher -CertStoreLocation "Cert:\CurrentUser\My"
+            $tmpPwd = ConvertTo-SecureString -String "qookit-sign" -Force -AsPlainText
+            Export-PfxCertificate -Cert $cert -FilePath "sign-cert.pfx" -Password $tmpPwd
+            $signCert = "sign-cert.pfx"
+            $signPass = "qookit-sign"
+          }
+          $msixFile = "artifacts\${env:PRODUCT_NAME}_${version}_x64.msix"
+          & $makeAppx pack /d $staging /p $msixFile /nv
+          if ($LASTEXITCODE -ne 0) { throw "MakeAppx 打包失败" }
+          & $signTool sign /fd SHA256 /f $signCert /p $signPass $msixFile
+          if ($LASTEXITCODE -ne 0) { throw "signtool 签名失败" }
+          Write-Host "=== MSIX 生成完成 ==="
+          Get-Item $msixFile | Format-List FullName, Length
 
       - name: 收集产物 (macOS)
         if: runner.os == 'macOS'
@@ -212,6 +266,13 @@ jobs:
           echo "=== 待发布文件 ==="
           find release-assets -type f -exec ls -lh {} \;
 
+      - name: 生成 Release 正文
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/gen_release_body.py
+
       - name: 创建 Release 并上传资产
         uses: softprops/action-gh-release@v2
         with:
@@ -221,17 +282,4 @@ jobs:
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
           files: release-assets/*
-          body: |
-            ## QookiT ${{ steps.version.outputs.version }}
-
-            ### 安装包
-            - **Windows**：`.msi`（系统安装）或 NSIS `.exe` 安装器
-            - **macOS**：`.dmg`（universal，Apple Silicon 与 Intel 通用；拖入 Applications 安装）
-            - **Linux**：`.deb`（Debian/Ubuntu）、`.rpm`（Fedora/RedHat）
-
-            ### 便携式
-            - **Windows**：`*-portable.zip`（解压即用单文件）
-            - **macOS**：`*-portable.tar.gz`（universal；解压得到 `.app`）
-            - **Linux**：`*.AppImage`（单文件可直接运行）或 `*-portable.tar.gz`
-
-            > macOS 版本未做代码签名与公证，首次打开请在「系统设置 → 隐私与安全性」点击「仍要打开」。
+          body_path: body.md

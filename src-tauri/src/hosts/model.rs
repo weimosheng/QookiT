@@ -25,6 +25,7 @@ pub enum AuthMethod {
 }
 
 impl Host {
+    #[allow(dead_code)]
     pub fn new(name: String, host: String, port: u16, username: String, auth: AuthMethod) -> Self {
         let now = chrono::Utc::now();
         Self {

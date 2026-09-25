@@ -104,6 +104,7 @@ impl SftpManager {
         self.session.canonicalize(path).await.map_err(sftp_err)
     }
 
+    #[allow(dead_code)]
     pub async fn exists(&self, path: &str) -> AppResult<bool> {
         self.session.try_exists(path).await.map_err(sftp_err)
     }

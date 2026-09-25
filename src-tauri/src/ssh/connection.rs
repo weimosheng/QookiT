@@ -35,6 +35,7 @@ impl client::Handler for ClientHandler {
     }
 }
 
+#[allow(dead_code)]
 pub struct Connection {
     pub id: String,
     pub host: String,
@@ -170,7 +171,7 @@ impl Connection {
         rows: u32,
     ) -> AppResult<TerminalChannel> {
         let handle = self.handle.lock().await;
-        let mut channel = handle.channel_open_session().await?;
+        let channel = handle.channel_open_session().await?;
         drop(handle);
 
         channel
@@ -183,7 +184,7 @@ impl Connection {
 
     pub async fn open_sftp(&self) -> AppResult<SftpManager> {
         let handle = self.handle.lock().await;
-        let mut channel = handle.channel_open_session().await?;
+        let channel = handle.channel_open_session().await?;
         drop(handle);
 
         channel.request_subsystem(true, "sftp").await?;
