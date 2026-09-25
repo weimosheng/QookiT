@@ -29,6 +29,7 @@ import {
 import "./registerTools";
 import { useDragStore, type DragInfo } from "./dragStore";
 import { cn } from "../../lib/cn";
+import { dialogAlert } from "../../lib/dialog";
 import { Terminal, Plus, LayoutGrid, Save, Trash2, RotateCcw, Download, Upload } from "lucide-react";
 import { useLayoutStore, createDefaultTemplate, type LayoutTemplate } from "./layoutStore";
 import { createPortal } from "react-dom";
@@ -47,6 +48,7 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
   const moveTabToPane = useDockStore((s) => s.moveTabToPane);
   const dropOnEdge = useDockStore((s) => s.dropOnEdge);
   const moveTabToRegion = useDockStore((s) => s.moveTabToRegion);
+  const dropOnTab = useDockStore((s) => s.dropOnTab);
   const setRegionSize = useDockStore((s) => s.setRegionSize);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,6 +70,15 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       const cr = container.getBoundingClientRect();
       const x = e.clientX - cr.left;
       const y = e.clientY - cr.top;
+
+      // 标签条内拖动排序：与侧边活动栏一样，先做插入位置命中
+      const tabTarget = hitTabStrip(e, container, paneRegions);
+      if (tabTarget) {
+        dropTargetRef.current = tabTarget;
+        setDropTarget(tabTarget);
+        return;
+      }
+
       const paneHit = findDropTarget(panes, x, y);
       if (paneHit) {
         const t: DropTarget = {
@@ -150,19 +161,26 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       e.preventDefault();
       const t = dropTargetRef.current;
       if (drag && t) {
-        applyDrop(connectionId, drag, t, { moveTabToPane, dropOnEdge, moveTabToRegion });
+        applyDrop(connectionId, drag, t, { moveTabToPane, dropOnEdge, moveTabToRegion, dropOnTab });
       }
+      dropTargetRef.current = null;
+      setDropTarget(null);
+      clearDrag();
+    };
+    const onDragEnd = () => {
       dropTargetRef.current = null;
       setDropTarget(null);
       clearDrag();
     };
     document.addEventListener("dragover", onDragOver, true);
     document.addEventListener("drop", onDrop, true);
+    document.addEventListener("dragend", onDragEnd, true);
     return () => {
       document.removeEventListener("dragover", onDragOver, true);
       document.removeEventListener("drop", onDrop, true);
+      document.removeEventListener("dragend", onDragEnd, true);
     };
-  }, [drag, connectionId, clearDrag, moveTabToPane, dropOnEdge, moveTabToRegion]);
+  }, [drag, connectionId, clearDrag, moveTabToPane, dropOnEdge, moveTabToRegion, dropOnTab]);
 
   if (!dock) {
     return <div className="h-full w-full" />;
@@ -239,6 +257,14 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       <SideActivityBar side="right" connectionId={connectionId} />
       {drag && dropTarget && (() => {
         const r = overlayRect(dropTarget);
+        if (dropTarget.kind === "tabStrip") {
+          return (
+            <div
+              className="pointer-events-none absolute z-50 rounded-full bg-accent transition-all duration-100 ease-out"
+              style={{ left: r.x, top: r.y, width: 2, height: r.h }}
+            />
+          );
+        }
         if (dropTarget.kind === "activityBar") {
           return (
             <div
@@ -369,7 +395,12 @@ function EmptyCenter({ connectionId }: { connectionId: string }) {
         <span className="text-sm">无终端</span>
         <button
           type="button"
-          onClick={() => void openTab(connectionId, "terminal", "center")}
+          onClick={() =>
+            void openTab(connectionId, "terminal", "center").catch((e) => {
+              const msg = e instanceof Error ? e.message : String(e);
+              void dialogAlert("创建终端失败", msg || "未知错误");
+            })
+          }
           className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs text-accent-foreground hover:opacity-90"
         >
           <Plus size={14} />
@@ -440,7 +471,7 @@ function SideActivityBar({
             }}
             onClick={() => {
               if (isActive && activeTabId) {
-                closeTab(connectionId, activeTabId);
+                void closeTab(connectionId, activeTabId);
               } else if (existingTabId && tree) {
                 const paneId = findPaneWithTab(tree, existingTabId);
                 if (paneId) setActiveInRegion(connectionId, side, paneId, existingTabId);
@@ -767,12 +798,14 @@ function RegionTree({ connectionId, region, tree, tabs }: RegionTreeProps) {
     () => ({
       setActive: (paneId: string, tabId: string) =>
         setActiveInRegion(connectionId, region, paneId, tabId),
-      closePaneTab: (paneId: string, tabId: string) =>
-        closePaneTab(connectionId, region, paneId, tabId),
+      closePaneTab: (paneId: string, tabId: string) => {
+        void closePaneTab(connectionId, region, paneId, tabId);
+      },
       newTab: () => {
-        void openTab(connectionId, "terminal", region).catch((e) =>
-          console.error("[dock] newTab failed:", e),
-        );
+        void openTab(connectionId, "terminal", region).catch((e) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          void dialogAlert("创建终端失败", msg || "未知错误");
+        });
       },
       split: (paneId: string, dir: "horizontal" | "vertical") =>
         void splitInRegion(connectionId, region, paneId, "terminal", dir),
@@ -828,7 +861,7 @@ function RegionTree({ connectionId, region, tree, tabs }: RegionTreeProps) {
                 zIndex: visible ? 10 : 0,
               }}
             >
-              {tool.render(connectionId, tab.id)}
+              {tool.render(connectionId, tab.id, tab)}
             </div>
           );
         })}
@@ -856,6 +889,7 @@ function renderFramework(
     return (
       <div className="flex h-full w-full flex-col">
         <TabBar
+          paneId={node.id}
           tabs={paneTabs}
           activeTabId={node.activeTabId}
           onSelect={(tabId) => ops.setActive(node.id, tabId)}
@@ -897,7 +931,53 @@ function renderFramework(
 type DropTarget =
   | { kind: "pane"; paneId: string; region: DockRegion; zone: DropZone; rect: Rect }
   | { kind: "region"; region: DockRegion; rect: Rect }
-  | { kind: "activityBar"; region: SideRegionId; rect: Rect };
+  | { kind: "activityBar"; region: SideRegionId; rect: Rect }
+  | { kind: "tabStrip"; paneId: string; region: DockRegion; index: number; rect: Rect };
+
+function hitTabStrip(
+  e: DragEvent,
+  container: HTMLElement,
+  paneRegions: Record<string, DockRegion>,
+): DropTarget | null {
+  const target = e.target as HTMLElement | null;
+  const tabEl = target?.closest?.("[data-tab-id]") as HTMLElement | null;
+  if (!tabEl) return null;
+  const strip = tabEl.closest<HTMLElement>("[data-tab-strip]");
+  if (!strip) return null;
+  const paneId = strip.getAttribute("data-pane-id");
+  const region = paneId ? paneRegions[paneId] : undefined;
+  if (!paneId || !region) return null;
+
+  const cr = container.getBoundingClientRect();
+  const stripRect = strip.getBoundingClientRect();
+  const tabs = Array.from(strip.querySelectorAll<HTMLElement>("[data-tab-id]"));
+
+  let index = tabs.length;
+  for (let i = 0; i < tabs.length; i++) {
+    const r = tabs[i].getBoundingClientRect();
+    if (e.clientX < r.left + r.width / 2) {
+      index = i;
+      break;
+    }
+  }
+
+  let indicatorX: number;
+  if (index < tabs.length) {
+    indicatorX = tabs[index].getBoundingClientRect().left - cr.left - 1;
+  } else if (tabs.length > 0) {
+    indicatorX = tabs[tabs.length - 1].getBoundingClientRect().right - cr.left - 1;
+  } else {
+    indicatorX = stripRect.left - cr.left;
+  }
+
+  return {
+    kind: "tabStrip",
+    paneId,
+    region,
+    index,
+    rect: { x: indicatorX, y: stripRect.top - cr.top + 3, w: 2, h: Math.max(0, stripRect.height - 6) },
+  };
+}
 
 const SIDE_REGIONS: SideRegionId[] = ["left", "right", "bottom"];
 
@@ -944,7 +1024,7 @@ function measureTargets(container: HTMLElement): {
 }
 
 function overlayRect(t: DropTarget): Rect {
-  if (t.kind === "region" || t.kind === "activityBar") return t.rect;
+  if (t.kind === "region" || t.kind === "activityBar" || t.kind === "tabStrip") return t.rect;
   const { rect, zone } = t;
   if (zone === "center") return rect;
   const halfW = rect.w / 2;
@@ -979,6 +1059,15 @@ interface DropOps {
     fromRegion: DockRegion,
     toRegion: DockRegion,
   ) => void;
+  dropOnTab: (
+    connectionId: string,
+    tabId: string,
+    fromRegion: DockRegion,
+    toRegion: DockRegion,
+    sourcePaneId: string,
+    targetPaneId: string,
+    index: number,
+  ) => void;
 }
 
 function applyDrop(
@@ -987,6 +1076,19 @@ function applyDrop(
   target: DropTarget,
   ops: DropOps,
 ): void {
+  if (target.kind === "tabStrip") {
+    ops.dropOnTab(
+      connectionId,
+      drag.tabId,
+      drag.sourceRegion,
+      target.region,
+      drag.sourcePaneId,
+      target.paneId,
+      target.index,
+    );
+    return;
+  }
+
   if (target.kind === "activityBar") {
     ops.moveTabToRegion(connectionId, drag.tabId, drag.sourceRegion, target.region);
     return;

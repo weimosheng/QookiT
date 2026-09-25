@@ -147,6 +147,51 @@ export function addTabToPane(
   };
 }
 
+export function insertTabToPane(
+  node: LayoutNode,
+  tabId: string,
+  paneId: string,
+  index: number,
+): LayoutNode {
+  if (node.type === "pane") {
+    if (node.id !== paneId || node.tabIds.includes(tabId)) return node;
+    const tabIds = [...node.tabIds];
+    const i = Math.max(0, Math.min(tabIds.length, index));
+    tabIds.splice(i, 0, tabId);
+    return { ...node, tabIds, activeTabId: tabId };
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => insertTabToPane(c, tabId, paneId, index)),
+  };
+}
+
+export function reorderTabInPane(
+  node: LayoutNode,
+  paneId: string,
+  tabId: string,
+  toIndex: number,
+): LayoutNode {
+  if (node.type === "pane") {
+    if (node.id !== paneId) return node;
+    const from = node.tabIds.indexOf(tabId);
+    if (from < 0) return node;
+    const tabIds = [...node.tabIds];
+    tabIds.splice(from, 1);
+    const index = Math.max(
+      0,
+      Math.min(tabIds.length, toIndex > from ? toIndex - 1 : toIndex),
+    );
+    if (index === from) return node;
+    tabIds.splice(index, 0, tabId);
+    return { ...node, tabIds, activeTabId: tabId };
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => reorderTabInPane(c, paneId, tabId, toIndex)),
+  };
+}
+
 export function setActiveInPane(
   node: LayoutNode,
   paneId: string,

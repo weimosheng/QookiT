@@ -5,12 +5,14 @@ import { terminalService } from "../../services/terminalService";
 import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
 import { useFileClipboardStore } from "../../stores/fileClipboardStore";
 import { useNavigationStore } from "../../stores/navigationStore";
+import { useDockStore } from "../dock/dockStore";
 import { dialogAlert, dialogConfirm, dialogPrompt } from "../../lib/dialog";
 import type { FileEntry } from "../../types/sftp";
 import {
   Folder,
   File as FileIcon,
   FileText,
+  FileCode,
   ChevronRight,
   ChevronDown,
   RefreshCw,
@@ -159,6 +161,29 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
     e.stopPropagation();
     setMenu({ x: e.clientX, y: e.clientY, entry, dirContext });
   };
+
+  const handleOpenInEditor = useCallback(
+    (entry: FileEntry) => {
+      closeMenu();
+      const dockStore = useDockStore.getState();
+      const dock = dockStore.byConnection[connectionId];
+      if (dock) {
+        for (const tab of Object.values(dock.tabs)) {
+          if (tab.toolTypeId === "editor" && tab.meta?.path === entry.path) {
+            dockStore.focusTab(connectionId, tab.id);
+            return;
+          }
+        }
+      }
+      void dockStore
+        .openTab(connectionId, "editor", "center", {
+          path: entry.path,
+          title: entry.name,
+        })
+        .catch((e) => console.error("[editor] open failed:", e));
+    },
+    [closeMenu, connectionId],
+  );
 
   const handleCopyPath = useCallback(
     async (entry: FileEntry) => {
@@ -480,7 +505,12 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
               isDir ? "font-medium" : ""
             } ${highlightPath === entry.path ? "bg-accent-soft ring-1 ring-inset ring-accent" : ""}`}
             style={{ paddingLeft: depth * 16 + 8 }}
-            onClick={() => isDir && toggleExpand(entry.path)}
+            onClick={() => {
+              if (isDir) toggleExpand(entry.path);
+            }}
+            onDoubleClick={() => {
+              if (!isDir) handleOpenInEditor(entry);
+            }}
             onContextMenu={(e) =>
               handleContextMenu(
                 e,
@@ -516,7 +546,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   };
 
   const menuWidth = 180;
-  const menuHeight = 340;
+  const menuHeight = 380;
   const left = menu ? Math.min(menu.x, window.innerWidth - menuWidth - 8) : 0;
   const top = menu ? Math.min(menu.y, window.innerHeight - menuHeight - 8) : 0;
 
@@ -622,6 +652,16 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         >
           {menu.entry ? (
             <>
+              {!menu.entry.is_dir && (
+                <>
+                  <MenuRow
+                    icon={<FileCode size={14} />}
+                    label="编辑"
+                    onClick={() => handleOpenInEditor(menu.entry!)}
+                  />
+                  <div className="my-1 h-px bg-border" />
+                </>
+              )}
               <MenuRow
                 icon={<Copy size={14} />}
                 label="复制路径"

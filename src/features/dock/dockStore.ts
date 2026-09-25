@@ -10,13 +10,15 @@ import {
   splitPane,
   moveTabToPane as moveTabInTree,
   dropOnEdge as dropOnEdgeInTree,
+  insertTabToPane,
+  reorderTabInPane,
   cleanupLayout,
   updateSplitSizes,
   genId,
   type PaneNode,
   type SplitNode,
 } from "./dockLayout";
-import { getTool, getTools, type ToolSide } from "./toolRegistry";
+import { getTool, getTools, type TabMeta, type ToolSide } from "./toolRegistry";
 import type { Blueprint, LayoutTemplate } from "./layoutStore";
 
 export type DockRegion = "left" | "right" | "bottom" | "center";
@@ -26,6 +28,8 @@ export interface TabInstance {
   id: string;
   toolTypeId: string;
   title: string;
+  meta?: TabMeta;
+  dirty?: boolean;
 }
 
 interface ConnectionDock {
@@ -44,15 +48,31 @@ function emptyDock(): ConnectionDock {
   return { tabs: {}, left: null, right: null, bottom: null, center: null, toolSides: {}, leftWidth: 320, rightWidth: 320, bottomHeight: 192 };
 }
 
+// 每个连接的终端序号：在 createTab 内同步递增，避免异步写回 store 前竞态导致编号重复/跳号。
+const terminalSeqByConn = new Map<string, number>();
+
 async function createTab(
   connectionId: string,
   toolTypeId: string,
+  meta?: TabMeta,
 ): Promise<TabInstance> {
   const tool = getTool(toolTypeId);
   const id = tool?.createInstance
-    ? await tool.createInstance(connectionId)
+    ? await tool.createInstance(connectionId, meta)
     : genId("tab");
-  return { id, toolTypeId, title: tool?.defaultTitle ?? toolTypeId };
+  const metaTitle = typeof meta?.title === "string" ? meta.title : undefined;
+  let title = metaTitle ?? tool?.defaultTitle ?? toolTypeId;
+  if (toolTypeId === "terminal") {
+    const seq = (terminalSeqByConn.get(connectionId) ?? 0) + 1;
+    terminalSeqByConn.set(connectionId, seq);
+    title = `终端 ${seq}`;
+  }
+  return {
+    id,
+    toolTypeId,
+    title,
+    ...(meta ? { meta } : {}),
+  };
 }
 
 function getDock(state: DockState, connectionId: string): ConnectionDock {
@@ -98,13 +118,17 @@ function treeToBlueprint(
 ): Blueprint | null {
   if (!tree) return null;
   if (tree.type === "pane") {
-    const tools = tree.tabIds
-      .map((id) => tabs[id]?.toolTypeId)
-      .filter((t): t is string => !!t);
-    const activeIndex = tree.activeTabId
-      ? tree.tabIds.indexOf(tree.activeTabId)
-      : -1;
-    return { type: "pane", tools, activeIndex: Math.max(0, activeIndex) };
+    const tools: string[] = [];
+    let activeIndex = -1;
+    for (const id of tree.tabIds) {
+      const tab = tabs[id];
+      if (!tab) continue;
+      if (getTool(tab.toolTypeId)?.excludeFromLayout) continue;
+      if (id === tree.activeTabId) activeIndex = tools.length;
+      tools.push(tab.toolTypeId);
+    }
+    if (tools.length === 0) return null;
+    return { type: "pane", tools, activeIndex: activeIndex < 0 ? 0 : activeIndex };
   }
   const children = tree.children
     .map((c) => treeToBlueprint(c, tabs))
@@ -122,12 +146,14 @@ async function blueprintToTree(
     const tabs: Record<string, TabInstance> = {};
     const tabIds: string[] = [];
     for (const toolTypeId of blueprint.tools) {
+      if (getTool(toolTypeId)?.excludeFromLayout) continue;
       const tab = await createTab(connectionId, toolTypeId);
       tabs[tab.id] = tab;
       tabIds.push(tab.id);
     }
     if (tabIds.length === 0) return { tree: null, tabs: {} };
-    const activeTabId = tabIds[blueprint.activeIndex] ?? tabIds[0];
+    const activeTabId =
+      tabIds[Math.min(blueprint.activeIndex, tabIds.length - 1)] ?? tabIds[0];
     const tree: PaneNode = { id: genId("pane"), type: "pane", tabIds, activeTabId };
     return { tree, tabs };
   }
@@ -156,6 +182,7 @@ interface DockState {
     connectionId: string,
     toolTypeId: string,
     region: DockRegion,
+    meta?: TabMeta,
   ) => Promise<string>;
   splitInRegion: (
     connectionId: string,
@@ -164,20 +191,22 @@ interface DockState {
     toolTypeId: string,
     direction: "horizontal" | "vertical",
   ) => Promise<string>;
-  closeTab: (connectionId: string, tabId: string) => void;
+  closeTab: (connectionId: string, tabId: string) => Promise<void>;
   closePaneTab: (
     connectionId: string,
     region: DockRegion,
     paneId: string,
     tabId: string,
-  ) => void;
+  ) => Promise<void>;
+  focusTab: (connectionId: string, tabId: string) => void;
+  setTabDirty: (connectionId: string, tabId: string, dirty: boolean) => void;
   setActiveInRegion: (
     connectionId: string,
     region: DockRegion,
     paneId: string,
     tabId: string,
   ) => void;
-  clearRegion: (connectionId: string, region: DockRegion) => void;
+  clearRegion: (connectionId: string, region: DockRegion) => Promise<void>;
   moveTabToPane: (
     connectionId: string,
     tabId: string,
@@ -200,6 +229,15 @@ interface DockState {
     tabId: string,
     fromRegion: DockRegion,
     toRegion: DockRegion,
+  ) => void;
+  dropOnTab: (
+    connectionId: string,
+    tabId: string,
+    fromRegion: DockRegion,
+    toRegion: DockRegion,
+    sourcePaneId: string,
+    targetPaneId: string,
+    index: number,
   ) => void;
   resizeSplit: (
     connectionId: string,
@@ -277,8 +315,8 @@ export const useDockStore = create<DockState>((set, get) => ({
     });
   },
 
-  openTab: async (connectionId, toolTypeId, region) => {
-    const tab = await createTab(connectionId, toolTypeId);
+  openTab: async (connectionId, toolTypeId, region, meta) => {
+    const tab = await createTab(connectionId, toolTypeId, meta);
     const dock = getDock(get(), connectionId);
     const tabs = { ...dock.tabs, [tab.id]: tab };
     let tree = dock[region];
@@ -316,12 +354,13 @@ export const useDockStore = create<DockState>((set, get) => ({
     return tab.id;
   },
 
-  closeTab: (connectionId, tabId) => {
+  closeTab: async (connectionId, tabId) => {
     const dock = getDock(get(), connectionId);
     const tab = dock.tabs[tabId];
     if (!tab) return;
     const tool = getTool(tab.toolTypeId);
-    void tool?.onClose?.(connectionId, tabId);
+    const allowed = await tool?.onClose?.(connectionId, tabId, tab);
+    if (allowed === false) return;
 
     const tabs = { ...dock.tabs };
     delete tabs[tabId];
@@ -341,12 +380,13 @@ export const useDockStore = create<DockState>((set, get) => ({
     });
   },
 
-  closePaneTab: (connectionId, region, paneId, tabId) => {
+  closePaneTab: async (connectionId, region, paneId, tabId) => {
     const dock = getDock(get(), connectionId);
     const tab = dock.tabs[tabId];
     if (!tab) return;
     const tool = getTool(tab.toolTypeId);
-    void tool?.onClose?.(connectionId, tabId);
+    const allowed = await tool?.onClose?.(connectionId, tabId, tab);
+    if (allowed === false) return;
 
     const tabs = { ...dock.tabs };
     delete tabs[tabId];
@@ -365,6 +405,41 @@ export const useDockStore = create<DockState>((set, get) => ({
     });
   },
 
+  focusTab: (connectionId, tabId) => {
+    const dock = getDock(get(), connectionId);
+    for (const region of ["left", "right", "bottom", "center"] as DockRegion[]) {
+      const tree = dock[region];
+      if (!tree) continue;
+      const paneId = findPaneWithTab(tree, tabId);
+      if (!paneId) continue;
+      set({
+        byConnection: {
+          ...get().byConnection,
+          [connectionId]: {
+            ...dock,
+            [region]: setActiveInPane(tree, paneId, tabId),
+          },
+        },
+      });
+      return;
+    }
+  },
+
+  setTabDirty: (connectionId, tabId, dirty) => {
+    const dock = getDock(get(), connectionId);
+    const tab = dock.tabs[tabId];
+    if (!tab || !!tab.dirty === dirty) return;
+    set({
+      byConnection: {
+        ...get().byConnection,
+        [connectionId]: {
+          ...dock,
+          tabs: { ...dock.tabs, [tabId]: { ...tab, dirty } },
+        },
+      },
+    });
+  },
+
   setActiveInRegion: (connectionId, region, paneId, tabId) => {
     const dock = getDock(get(), connectionId);
     const tree = dock[region];
@@ -378,17 +453,19 @@ export const useDockStore = create<DockState>((set, get) => ({
     });
   },
 
-  clearRegion: (connectionId, region) => {
+  clearRegion: async (connectionId, region) => {
     const dock = getDock(get(), connectionId);
     const tree = dock[region];
     if (!tree) return;
-    const tabs = { ...dock.tabs };
-    for (const tid of collectTabIds(tree)) {
-      const tab = tabs[tid];
+    const ids = collectTabIds(tree);
+    for (const tid of ids) {
+      const tab = dock.tabs[tid];
       const tool = tab && getTool(tab.toolTypeId);
-      void tool?.onClose?.(connectionId, tid);
-      delete tabs[tid];
+      const allowed = await tool?.onClose?.(connectionId, tid, tab);
+      if (allowed === false) return;
     }
+    const tabs = { ...dock.tabs };
+    for (const tid of ids) delete tabs[tid];
     set({
       byConnection: {
         ...get().byConnection,
@@ -480,6 +557,49 @@ export const useDockStore = create<DockState>((set, get) => ({
     });
   },
 
+  dropOnTab: (connectionId, tabId, fromRegion, toRegion, sourcePaneId, targetPaneId, index) => {
+    const dock = getDock(get(), connectionId);
+    const fromTree = dock[fromRegion];
+    const toTree = dock[toRegion];
+    if (!fromTree || !toTree) return;
+
+    if (fromRegion === toRegion) {
+      let tree: LayoutNode;
+      if (sourcePaneId === targetPaneId) {
+        tree = reorderTabInPane(fromTree, targetPaneId, tabId, index);
+      } else {
+        const removed = removeTabFromPane(fromTree, tabId, sourcePaneId);
+        tree = cleanupLayout(insertTabToPane(removed, tabId, targetPaneId, index)) ?? removed;
+      }
+      if (tree === fromTree) return;
+      set({
+        byConnection: {
+          ...get().byConnection,
+          [connectionId]: { ...dock, [fromRegion]: tree },
+        },
+      });
+      return;
+    }
+
+    const tab = dock.tabs[tabId];
+    const toolSides = { ...dock.toolSides };
+    if (tab) toolSides[tab.toolTypeId] = toRegion;
+
+    const newFromTree = removeTabFromTree(fromTree, tabId);
+    const newToTree = insertTabToPane(toTree, tabId, targetPaneId, index);
+    set({
+      byConnection: {
+        ...get().byConnection,
+        [connectionId]: {
+          ...dock,
+          toolSides,
+          [fromRegion]: newFromTree,
+          [toRegion]: newToTree,
+        },
+      },
+    });
+  },
+
   resizeSplit: (connectionId, region, splitId, index, deltaPercent) => {
     const dock = getDock(get(), connectionId);
     const tree = dock[region];
@@ -526,7 +646,8 @@ export const useDockStore = create<DockState>((set, get) => ({
     for (const tabId of Object.keys(dock.tabs)) {
       const tab = dock.tabs[tabId];
       const tool = getTool(tab.toolTypeId);
-      void tool?.onClose?.(connectionId, tabId);
+      const allowed = await tool?.onClose?.(connectionId, tabId, tab);
+      if (allowed === false) return;
     }
     const [leftR, rightR, bottomR, centerR] = await Promise.all([
       blueprintToTree(template.left, connectionId),

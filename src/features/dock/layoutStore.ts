@@ -36,6 +36,7 @@ export function createDefaultTemplate(): LayoutTemplate {
   const toolSides: Record<string, DockRegion> = {};
   const sideTools: Record<DockRegion, string[]> = { left: [], right: [], bottom: [], center: [] };
   for (const t of tools) {
+    if (t.excludeFromLayout) continue;
     const side = (t.defaultSide ?? "center") as DockRegion;
     toolSides[t.id] = side;
     sideTools[side].push(t.id);

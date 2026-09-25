@@ -4,13 +4,16 @@ import { FileExplorer } from "../sftp/FileExplorer";
 import { SearchPanel } from "../search/SearchPanel";
 import { CommandPalette } from "../command/CommandPalette";
 import { PerformancePanel } from "../performance/PerformancePanel";
+import { EditorPanel } from "../editor/EditorPanel";
 import { terminalService } from "../../services/terminalService";
+import { dialogConfirm } from "../../lib/dialog";
 import {
   Terminal,
   Folder,
   Search,
   Command as CommandIcon,
   Gauge,
+  FileCode,
 } from "lucide-react";
 
 registerTool({
@@ -63,4 +66,28 @@ registerTool({
   defaultTitle: "性能",
   defaultSide: "right",
   render: (connId) => <PerformancePanel connectionId={connId} />,
+});
+
+registerTool({
+  id: "editor",
+  name: "编辑器",
+  icon: FileCode,
+  defaultTitle: "编辑器",
+  defaultSide: "center",
+  excludeFromLayout: true,
+  render: (connId, instId, tab) => (
+    <EditorPanel
+      connectionId={connId}
+      instanceId={instId}
+      path={typeof tab?.meta?.path === "string" ? tab.meta.path : ""}
+    />
+  ),
+  onClose: async (_connId, _instId, tab) => {
+    if (!tab?.dirty) return true;
+    return dialogConfirm(
+      "未保存的更改",
+      `"${tab.title}" 有未保存的更改，确定关闭吗？`,
+      true,
+    );
+  },
 });

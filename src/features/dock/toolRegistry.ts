@@ -1,6 +1,9 @@
 import type { ComponentType, ReactNode } from "react";
+import type { TabInstance } from "./dockStore";
 
 export type ToolSide = "left" | "right" | "bottom" | "center";
+
+export type TabMeta = Record<string, unknown>;
 
 export interface ToolType {
   id: string;
@@ -8,9 +11,18 @@ export interface ToolType {
   icon: ComponentType<{ size?: number; className?: string }>;
   defaultTitle: string;
   defaultSide?: ToolSide;
-  render: (connectionId: string, instanceId: string) => ReactNode;
-  createInstance?: (connectionId: string) => Promise<string>;
-  onClose?: (connectionId: string, instanceId: string) => void | Promise<void>;
+  excludeFromLayout?: boolean;
+  render: (
+    connectionId: string,
+    instanceId: string,
+    tab?: TabInstance,
+  ) => ReactNode;
+  createInstance?: (connectionId: string, meta?: TabMeta) => Promise<string>;
+  onClose?: (
+    connectionId: string,
+    instanceId: string,
+    tab?: TabInstance,
+  ) => boolean | void | Promise<boolean | void>;
   singleton?: boolean;
 }
 
