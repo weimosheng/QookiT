@@ -41,7 +41,7 @@ jobs:
             target: macos-universal
             rust_target: universal-apple-darwin
             toolchain_targets: aarch64-apple-darwin x86_64-apple-darwin
-            bundles: dmg
+            bundles: dmg,app
           - platform: ubuntu-22.04
             target: linux-x64
             rust_target: x86_64-unknown-linux-gnu
