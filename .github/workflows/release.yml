@@ -238,6 +238,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: 解析版本号
         id: version
         shell: bash
