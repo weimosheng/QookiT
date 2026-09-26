@@ -204,14 +204,23 @@ impl Connection {
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
         let mut exit_code: Option<i32> = None;
+        let mut got_eof = false;
 
         loop {
-            let msg = match timeout(Duration::from_secs(30), channel.wait()).await {
+            let wait_dur = if got_eof {
+                Duration::from_secs(5)
+            } else {
+                Duration::from_secs(30)
+            };
+            let msg = match timeout(wait_dur, channel.wait()).await {
                 Ok(m) => m,
                 Err(_) => {
+                    if got_eof {
+                        break;
+                    }
                     return Err(AppError::Other(
                         "命令执行超时 (30s 无响应)".into(),
-                    ))
+                    ));
                 }
             };
             match msg {
@@ -223,8 +232,12 @@ impl Connection {
                 }
                 Some(ChannelMsg::ExitStatus { exit_status }) => {
                     exit_code = Some(exit_status as i32);
+                    break;
                 }
-                Some(ChannelMsg::Eof { .. }) | None => {
+                Some(ChannelMsg::Eof { .. }) => {
+                    got_eof = true;
+                }
+                None => {
                     break;
                 }
                 _ => {}

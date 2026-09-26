@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
 import { sftpService } from "../../services/sftpService";
 import { terminalService } from "../../services/terminalService";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
 import { useFileClipboardStore } from "../../stores/fileClipboardStore";
 import { useNavigationStore } from "../../stores/navigationStore";
 import { useTransferStore } from "../../stores/transferStore";
@@ -31,7 +31,12 @@ import {
   Download,
   Upload,
   ListTree,
+  Lock,
+  Archive,
+  FileArchive,
 } from "lucide-react";
+import { PermissionsModal } from "./PermissionsModal";
+import { ArchiveModal } from "./ArchiveModal";
 
 interface FileExplorerProps {
   connectionId: string;
@@ -76,6 +81,38 @@ function parentDirOfPath(p: string): string {
   return i <= 0 ? "/" : p.slice(0, i);
 }
 
+const ARCHIVE_EXTS = [
+  ".tar.gz", ".tgz",
+  ".tar.bz2", ".tbz2",
+  ".tar.xz", ".txz",
+  ".tar",
+  ".zip",
+  ".7z",
+  ".rar",
+];
+
+function isArchive(name: string): boolean {
+  const lower = name.toLowerCase();
+  return ARCHIVE_EXTS.some((ext) => lower.endsWith(ext));
+}
+
+function getExtractCommand(archivePath: string, targetDir: string): string {
+  const lower = archivePath.toLowerCase();
+  const src = shellQuote(archivePath);
+  const dir = shellQuote(targetDir);
+  if (lower.endsWith(".zip")) return `unzip -o ${src} -d ${dir}`;
+  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz"))
+    return `tar xzf ${src} -C ${dir}`;
+  if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2"))
+    return `tar xjf ${src} -C ${dir}`;
+  if (lower.endsWith(".tar.xz") || lower.endsWith(".txz"))
+    return `tar xJf ${src} -C ${dir}`;
+  if (lower.endsWith(".tar")) return `tar xf ${src} -C ${dir}`;
+  if (lower.endsWith(".7z")) return `7z x ${src} -o${dir} -y`;
+  if (lower.endsWith(".rar")) return `unrar x ${src} ${dir}/`;
+  return "";
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -103,13 +140,14 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   >(null);
   const [searching, setSearching] = useState(false);
   const [highlightPath, setHighlightPath] = useState<string | null>(null);
+  const [permModalEntry, setPermModalEntry] = useState<FileEntry | null>(null);
+  const [archiveModalEntry, setArchiveModalEntry] = useState<FileEntry | null>(
+    null,
+  );
 
   const treeCacheRef = useRef(treeCache);
   treeCacheRef.current = treeCache;
 
-  const activeTerminalId = useTerminalActiveStore(
-    (s) => s.activeByConnection[connectionId] ?? null,
-  );
   const clipboard = useFileClipboardStore((s) => s.clipboard);
   const setClipboard = useFileClipboardStore((s) => s.set);
   const clearClipboard = useFileClipboardStore((s) => s.clear);
@@ -211,6 +249,48 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         // clipboard may be blocked
       }
       closeMenu();
+    },
+    [closeMenu],
+  );
+
+  const handlePermissions = useCallback(
+    (entry: FileEntry) => {
+      closeMenu();
+      setPermModalEntry(entry);
+    },
+    [closeMenu],
+  );
+
+  const handleExtract = useCallback(
+    async (entry: FileEntry) => {
+      closeMenu();
+      const dir = parentDirOf(entry);
+      const cmd = getExtractCommand(entry.path, dir);
+      if (!cmd) {
+        await dialogAlert("解压失败", "不支持的压缩格式");
+        return;
+      }
+      setBusy(true);
+      try {
+        const result = await sftpService.exec(connectionId, cmd);
+        if (result.exit_code !== 0) {
+          await dialogAlert("解压失败", result.stderr || result.stdout);
+        } else {
+          await loadDir(dir, true);
+        }
+      } catch (e) {
+        await dialogAlert("解压失败", String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [closeMenu, connectionId, loadDir],
+  );
+
+  const handleCompress = useCallback(
+    (entry: FileEntry) => {
+      closeMenu();
+      setArchiveModalEntry(entry);
     },
     [closeMenu],
   );
@@ -492,22 +572,42 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   const handleCdToTerminal = useCallback(
     async (entry: FileEntry) => {
       closeMenu();
-      if (!activeTerminalId) {
-        await dialogAlert("提示", "没有可用的终端");
-        return;
-      }
       const targetDir = entry.is_dir ? entry.path : parentDirOf(entry);
+      const dockStore = useDockStore.getState();
+      const dock = dockStore.byConnection[connectionId];
+      let terminalId: string | null = null;
+      if (dock) {
+        for (const tab of Object.values(dock.tabs)) {
+          if (tab.toolTypeId === "terminal") {
+            terminalId = tab.id;
+            dockStore.focusTab(connectionId, tab.id);
+            break;
+          }
+        }
+      }
+      if (!terminalId) {
+        try {
+          terminalId = await dockStore.openTab(
+            connectionId,
+            "terminal",
+            "center",
+          );
+        } catch (e) {
+          await dialogAlert("打开终端失败", String(e));
+          return;
+        }
+      }
       try {
         await terminalService.write(
           connectionId,
-          activeTerminalId,
+          terminalId,
           `cd ${targetDir}\n`,
         );
       } catch (e) {
         await dialogAlert("cd 失败", String(e));
       }
     },
-    [closeMenu, connectionId, activeTerminalId],
+    [closeMenu, connectionId],
   );
 
   const handleNewFolder = useCallback(
@@ -545,9 +645,9 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           if (candidate === clipboard.path) continue;
           const check = await sftpService.exec(
             connectionId,
-            `test -e ${shellQuote(candidate)}; echo $?`,
+            `test -e ${shellQuote(candidate)}`,
           );
-          if (check.stdout.trim() === "0") continue;
+          if (check.exit_code === 0) continue;
           destPath = candidate;
           break;
         }
@@ -557,12 +657,12 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         }
         const cmd = clipboard.cut
           ? `mv ${shellQuote(clipboard.path)} ${shellQuote(destPath)}`
-          : `cp -r ${shellQuote(clipboard.path)} ${shellQuote(destPath)}`;
+          : `cp -R ${shellQuote(clipboard.path)} ${shellQuote(destPath)}`;
         const result = await sftpService.exec(connectionId, cmd);
         if (result.exit_code !== 0) {
           await dialogAlert(
             `${clipboard.cut ? "移动" : "复制"}失败`,
-            result.stderr || result.stdout,
+            result.stderr || result.stdout || `退出码 ${result.exit_code}`,
           );
         } else {
           if (clipboard.cut) clearClipboard();
@@ -911,10 +1011,10 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         </div>
       )}
 
-      {menu && (
+      {menu && createPortal(
         <div
           data-file-menu
-          className="fixed z-50 min-w-40 overflow-hidden rounded-md border border-border bg-background py-1 text-sm shadow-lg"
+          className="fixed z-[9999] min-w-40 overflow-hidden rounded-md border border-border bg-background py-1 text-sm shadow-lg"
           style={{ left, top, width: menuWidth }}
         >
           {menu.entry ? (
@@ -938,6 +1038,23 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
                 icon={<Copy size={14} />}
                 label="复制路径"
                 onClick={() => handleCopyPath(menu.entry!)}
+              />
+              <MenuRow
+                icon={<Lock size={14} />}
+                label="权限"
+                onClick={() => handlePermissions(menu.entry!)}
+              />
+              {!menu.entry.is_dir && isArchive(menu.entry.name) && (
+                <MenuRow
+                  icon={<FileArchive size={14} />}
+                  label="解压"
+                  onClick={() => handleExtract(menu.entry!)}
+                />
+              )}
+              <MenuRow
+                icon={<Archive size={14} />}
+                label="压缩"
+                onClick={() => handleCompress(menu.entry!)}
               />
               <div className="my-1 h-px bg-border" />
               <MenuRow
@@ -965,7 +1082,6 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
               <MenuRow
                 icon={<Terminal size={14} />}
                 label={menu.entry.is_dir ? "在终端中打开" : "cd 到所在目录"}
-                disabled={!activeTerminalId}
                 onClick={() => handleCdToTerminal(menu.entry!)}
               />
               {menu.entry.is_dir && (
@@ -1016,8 +1132,37 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
               />
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
+
+      <PermissionsModal
+        isOpen={permModalEntry !== null}
+        onOpenChange={(open) => {
+          if (!open) setPermModalEntry(null);
+        }}
+        connectionId={connectionId}
+        entry={permModalEntry}
+        onApplied={() => {
+          if (permModalEntry) {
+            void loadDir(parentDirOf(permModalEntry), true);
+          }
+        }}
+      />
+
+      <ArchiveModal
+        isOpen={archiveModalEntry !== null}
+        onOpenChange={(open) => {
+          if (!open) setArchiveModalEntry(null);
+        }}
+        connectionId={connectionId}
+        entry={archiveModalEntry}
+        onApplied={() => {
+          if (archiveModalEntry) {
+            void loadDir(parentDirOf(archiveModalEntry), true);
+          }
+        }}
+      />
     </div>
   );
 }

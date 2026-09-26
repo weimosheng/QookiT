@@ -1,6 +1,6 @@
 [package]
 name = "qookit"
-version = "0.5.0"
+version = "0.6.0"
 description = "QookiT - 一个基于 russh 的可扩展 SSH 客户端"
 authors = ["QookiT"]
 license = "GPL-3.0-or-later"

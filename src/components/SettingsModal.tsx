@@ -1,3 +1,4 @@
+import pkg from "../../package.json";
 import { useState, type ReactNode } from "react";
 import { Modal, Button, useOverlayState } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -25,7 +26,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const APP_VERSION = "0.3.0";
+const APP_VERSION = pkg.version;
 const REPO_URL = "https://github.com/weimosheng/QookiT";
 
 interface SettingsModalProps {
