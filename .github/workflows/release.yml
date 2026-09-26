@@ -196,7 +196,9 @@ jobs:
           mkdir -p "$STAGING"
           # 安装包：dmg
           find "$BUNDLE/dmg" -name '*.dmg' -exec cp {} "$STAGING/" \; 2>/dev/null || true
-          find "$BUNDLE/dmg" -name '*.dmg.sig' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          # Updater 产物：.app.tar.gz + .sig（Tauri 2 updater 要求此格式）
+          find "$BUNDLE/macos" -name '*.app.tar.gz' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/macos" -name '*.app.tar.gz.sig' -exec cp {} "$STAGING/" \; 2>/dev/null || true
           # 便携式：打包 .app 目录
           APP=$(find "$BUNDLE/macos" -name '*.app' -type d | head -n1)
           if [ -n "$APP" ]; then

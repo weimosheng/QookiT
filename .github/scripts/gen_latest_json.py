@@ -15,17 +15,15 @@ for sig_path in sorted(assets_dir.glob("*.sig")):
     installer_path = assets_dir / installer_name
     if not installer_path.exists():
         continue
-    ext = installer_path.suffix.lower()
-    if ext == ".exe":
-        platform = "windows-x64"
-    elif ext == ".dmg":
-        platform = "macos-universal"
-    elif ext == ".deb":
-        platform = "linux-x64"
-    else:
-        continue
+    name_lower = installer_name.lower()
     url = f"https://github.com/{repo}/releases/download/{tag}/{installer_name}"
-    platforms[platform] = {"signature": sig_content, "url": url}
+    if name_lower.endswith(".exe"):
+        platforms["windows-x86_64"] = {"signature": sig_content, "url": url}
+    elif name_lower.endswith(".app.tar.gz"):
+        platforms["darwin-x86_64"] = {"signature": sig_content, "url": url}
+        platforms["darwin-aarch64"] = {"signature": sig_content, "url": url}
+    elif name_lower.endswith(".appimage"):
+        platforms["linux-x86_64"] = {"signature": sig_content, "url": url}
 
 latest = {
     "version": version,
