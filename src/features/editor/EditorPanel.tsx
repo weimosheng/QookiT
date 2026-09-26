@@ -25,6 +25,7 @@ import {
   foldGutter,
   foldKeymap,
   indentOnInput,
+  indentUnit,
 } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import {
@@ -34,8 +35,14 @@ import {
   completionKeymap,
 } from "@codemirror/autocomplete";
 import { sftpService } from "../../services/sftpService";
+import { listen } from "@tauri-apps/api/event";
+import {
+  FILE_READ_PROGRESS_EVENT,
+  type FileReadProgressPayload,
+} from "../../types/events";
 import { useDockStore } from "../dock/dockStore";
 import { useThemeStore } from "../../stores/themeStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { dialogAlert } from "../../lib/dialog";
 import { cn } from "../../lib/cn";
 import { editorTheme } from "./editorTheme";
@@ -52,6 +59,8 @@ import {
   Save,
   Undo2,
   WrapText,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 
 const ENCODINGS: { value: string; label: string }[] = [
@@ -68,7 +77,48 @@ const ENCODINGS: { value: string; label: string }[] = [
 const MAX_OPEN_BYTES = 4 * 1024 * 1024;
 const LARGE_FILE_BYTES = 1024 * 1024;
 
-type EditorStatus = "loading" | "ready" | "error" | "binary" | "too-large";
+function buildTabSize(n: number): Extension[] {
+  return [EditorState.tabSize.of(n), indentUnit.of(" ".repeat(n))];
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "ico",
+  "avif",
+]);
+
+function isImageFile(path: string): boolean {
+  const ext = path.toLowerCase().split(".").pop() ?? "";
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+function imageMimeType(path: string): string {
+  const ext = path.toLowerCase().split(".").pop() ?? "";
+  const map: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    ico: "image/x-icon",
+    avif: "image/avif",
+  };
+  return map[ext] ?? "image/octet-stream";
+}
+
+type EditorStatus = "loading" | "ready" | "error" | "binary" | "too-large" | "image";
 
 interface EditorPanelProps {
   connectionId: string;
@@ -106,6 +156,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
   const themeCompartment = useRef(new Compartment());
   const langCompartment = useRef(new Compartment());
   const wrapCompartment = useRef(new Compartment());
+  const tabSizeCompartment = useRef(new Compartment());
 
   const [status, setStatus] = useState<EditorStatus>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -115,10 +166,27 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
   const [languageLabel, setLanguageLabel] = useState("Plain Text");
   const [largeFile, setLargeFile] = useState(false);
   const [encoding, setEncoding] = useState("utf-8");
-  const [wrap, setWrap] = useState(false);
+  const [wrap, setWrap] = useState(() => useSettingsStore.getState().editorWordWrap);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loadProgress, setLoadProgress] = useState<{
+    read: number;
+    total: number;
+  } | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
+  const imageScrollRef = useRef<HTMLDivElement>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panRef = useRef<{
+    startX: number;
+    startY: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
 
   const dark = useThemeStore((s) => s.dark);
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const editorTabSize = useSettingsStore((s) => s.editorTabSize);
   const darkRef = useRef(dark);
   darkRef.current = dark;
   const encodingRef = useRef(encoding);
@@ -167,10 +235,15 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
             },
           },
         ]),
-        themeCompartment.current.of(editorTheme(darkRef.current)),
+        themeCompartment.current.of(
+          editorTheme(darkRef.current, useSettingsStore.getState().editorFontSize),
+        ),
         langCompartment.current.of([]),
         wrapCompartment.current.of(
           wrapRef.current ? EditorView.lineWrapping : [],
+        ),
+        tabSizeCompartment.current.of(
+          buildTabSize(useSettingsStore.getState().editorTabSize),
         ),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
@@ -235,6 +308,9 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
       setLanguageLabel("Plain Text");
       setLargeFile(false);
       setSaved(false);
+      setLoadProgress(null);
+      setImageBase64(null);
+      setImageZoom(1);
       setTabDirty(connectionId, instanceId, false);
       try {
         try {
@@ -246,13 +322,41 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
         } catch {
           // stat 失败时退化为读取后再判断
         }
-        const base64 = await sftpService.readFile(connectionId, path);
-        if (isCancelled() || base64.length > MAX_OPEN_BYTES * 1.4) {
+        if (isCancelled()) return;
+        const unlistenProgress = await listen<FileReadProgressPayload>(
+          FILE_READ_PROGRESS_EVENT,
+          (event) => {
+            if (isCancelled()) return;
+            if (
+              event.payload.connection_id === connectionId &&
+              event.payload.path === path
+            ) {
+              setLoadProgress({
+                read: event.payload.read_bytes,
+                total: event.payload.total_bytes,
+              });
+            }
+          },
+        );
+        let base64 = "";
+        try {
+          base64 = await sftpService.readFileWithProgress(connectionId, path);
+        } finally {
+          unlistenProgress();
+          if (!isCancelled()) setLoadProgress(null);
+        }
+        if (isCancelled()) return;
+        if (base64.length > MAX_OPEN_BYTES * 1.4) {
           setStatus("too-large");
           return;
         }
         const bytes = base64ToBytes(base64);
         rawBytesRef.current = bytes;
+        if (isImageFile(path)) {
+          setImageBase64(base64);
+          setStatus("image");
+          return;
+        }
         if (bytes.indexOf(0) >= 0) {
           setStatus("binary");
           return;
@@ -345,9 +449,25 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
   useEffect(() => {
     darkRef.current = dark;
     viewRef.current?.dispatch({
-      effects: themeCompartment.current.reconfigure(editorTheme(dark)),
+      effects: themeCompartment.current.reconfigure(
+        editorTheme(dark, useSettingsStore.getState().editorFontSize),
+      ),
     });
   }, [dark]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: themeCompartment.current.reconfigure(
+        editorTheme(darkRef.current, editorFontSize),
+      ),
+    });
+  }, [editorFontSize]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: tabSizeCompartment.current.reconfigure(buildTabSize(editorTabSize)),
+    });
+  }, [editorTabSize]);
 
   useEffect(() => {
     const parent = containerRef.current;
@@ -366,6 +486,39 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
       viewRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const el = imageScrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.15 : 0.15;
+      setImageZoom((z) => Math.min(10, Math.max(0.1, +(z + delta).toFixed(2))));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [status, imageBase64]);
+
+  useEffect(() => {
+    if (!isPanning) return;
+    const onMove = (e: MouseEvent) => {
+      if (!panRef.current) return;
+      setImagePan({
+        x: panRef.current.panX + (e.clientX - panRef.current.startX),
+        y: panRef.current.panY + (e.clientY - panRef.current.startY),
+      });
+    };
+    const onUp = () => {
+      setIsPanning(false);
+      panRef.current = null;
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [isPanning]);
 
   const save = useCallback(async () => {
     const view = viewRef.current;
@@ -483,14 +636,102 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
 
       <div className="relative flex-1 overflow-hidden">
         <div ref={containerRef} className="h-full w-full" />
-        {status !== "ready" && (
+        {status === "image" && imageBase64 && (
+          <div className="absolute inset-0 flex flex-col bg-background">
+            <div
+              ref={imageScrollRef}
+              className={`flex-1 overflow-hidden ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
+              onMouseDown={(e) => {
+                panRef.current = {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  panX: imagePan.x,
+                  panY: imagePan.y,
+                };
+                setIsPanning(true);
+              }}
+              onDragStart={(e) => e.preventDefault()}
+            >
+              <div className="flex min-h-full min-w-full items-center justify-center p-4">
+                <img
+                  src={`data:${imageMimeType(path)};base64,${imageBase64}`}
+                  alt={path}
+                  draggable={false}
+                  className="object-contain"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    transform: `translate(${imagePan.x}px, ${imagePan.y}px) scale(${imageZoom})`,
+                    transformOrigin: "center center",
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-center gap-3 border-t border-border py-1.5 text-xs text-muted">
+              <button
+                type="button"
+                onClick={() =>
+                  setImageZoom((z) =>
+                    Math.max(0.1, +(z - 0.25).toFixed(2)),
+                  )
+                }
+                className="rounded p-1 transition-colors hover:bg-default-soft hover:text-foreground"
+                title="缩小"
+              >
+                <ZoomOut size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+      setImageZoom(1);
+      setImagePan({ x: 0, y: 0 });
+                  setImagePan({ x: 0, y: 0 });
+                }}
+                className="rounded px-2 py-0.5 transition-colors hover:bg-default-soft hover:text-foreground"
+                title="重置缩放"
+              >
+                {Math.round(imageZoom * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setImageZoom((z) => Math.min(10, +(z + 0.25).toFixed(2)))
+                }
+                className="rounded p-1 transition-colors hover:bg-default-soft hover:text-foreground"
+                title="放大"
+              >
+                <ZoomIn size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+        {status !== "ready" && status !== "image" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background px-6 text-center text-sm text-muted">
-            {status === "loading" && (
-              <>
-                <Loader2 size={22} className="animate-spin text-accent" />
-                <span>正在读取文件...</span>
-              </>
-            )}
+            {status === "loading" &&
+              (loadProgress && loadProgress.total > 0 ? (
+                <div className="flex w-72 flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span>正在读取文件</span>
+                    <span>
+                      {formatBytes(loadProgress.read)} /{" "}
+                      {formatBytes(loadProgress.total)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-default-soft">
+                    <div
+                      className="h-full rounded-full bg-accent transition-all duration-150"
+                      style={{
+                        width: `${Math.min(100, (loadProgress.read / loadProgress.total) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Loader2 size={22} className="animate-spin text-accent" />
+                  <span>正在读取文件...</span>
+                </>
+              ))}
             {status === "error" && (
               <>
                 <AlertTriangle size={22} className="text-danger" />

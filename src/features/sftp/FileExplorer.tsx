@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
 import { sftpService } from "../../services/sftpService";
 import { terminalService } from "../../services/terminalService";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
 import { useFileClipboardStore } from "../../stores/fileClipboardStore";
 import { useNavigationStore } from "../../stores/navigationStore";
+import { useTransferStore } from "../../stores/transferStore";
 import { useDockStore } from "../dock/dockStore";
 import { dialogAlert, dialogConfirm, dialogPrompt } from "../../lib/dialog";
 import type { FileEntry } from "../../types/sftp";
@@ -26,6 +28,9 @@ import {
   Terminal,
   Search,
   X,
+  Download,
+  Upload,
+  ListTree,
 } from "lucide-react";
 
 interface FileExplorerProps {
@@ -71,6 +76,18 @@ function parentDirOfPath(p: string): string {
   return i <= 0 ? "/" : p.slice(0, i);
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export function FileExplorer({ connectionId }: FileExplorerProps) {
   const [treeCache, setTreeCache] = useState<Record<string, FileEntry[]>>({});
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
@@ -97,6 +114,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   const setClipboard = useFileClipboardStore((s) => s.set);
   const clearClipboard = useFileClipboardStore((s) => s.clear);
   const canPaste = !!clipboard && clipboard.connectionId === connectionId;
+  const addTask = useTransferStore((s) => s.addTask);
 
   const loadDir = useCallback(
     async (dirPath: string, force = false): Promise<FileEntry[] | undefined> => {
@@ -240,6 +258,237 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
     [closeMenu, connectionId, loadDir],
   );
 
+  const ensureTransferTab = useCallback(() => {
+    const dockStore = useDockStore.getState();
+    const dock = dockStore.byConnection[connectionId];
+    if (dock) {
+      for (const tab of Object.values(dock.tabs)) {
+        if (tab.toolTypeId === "transfer") {
+          dockStore.focusTab(connectionId, tab.id);
+          return;
+        }
+      }
+    }
+    void dockStore.openTab(connectionId, "transfer", "bottom").catch(() => {});
+  }, [connectionId]);
+
+  const handleDownload = useCallback(
+    async (entry: FileEntry) => {
+      closeMenu();
+      const localPath = await save({
+        defaultPath: entry.name,
+        filters: [{ name: "所有文件", extensions: ["*"] }],
+      });
+      if (!localPath) return;
+      const id = crypto.randomUUID();
+      addTask({
+        id,
+        connectionId,
+        direction: "download",
+        filename: entry.name,
+        remotePath: entry.path,
+        localPath,
+        transferred: 0,
+        total: entry.size,
+        status: "pending",
+        error: null,
+      });
+      ensureTransferTab();
+      try {
+        await sftpService.downloadFile(connectionId, entry.path, localPath, id);
+      } catch (e) {
+        useTransferStore.getState().updateTask(id, {
+          status: "error",
+          error: String(e),
+        });
+      }
+    },
+    [closeMenu, connectionId, addTask, ensureTransferTab],
+  );
+
+  const startUpload = useCallback(
+    (targetDir: string, localPaths: string[]): Promise<void> => {
+      if (localPaths.length === 0) return Promise.resolve();
+      ensureTransferTab();
+      const promises = localPaths.map((localPath) => {
+        const filename = localPath.split(/[\\/]/).pop() ?? localPath;
+        const remotePath =
+          targetDir === "/" ? `/${filename}` : `${targetDir}/${filename}`;
+        const id = crypto.randomUUID();
+        addTask({
+          id,
+          connectionId,
+          direction: "upload",
+          filename,
+          remotePath,
+          localPath,
+          transferred: 0,
+          total: 0,
+          status: "pending",
+          error: null,
+        });
+        return sftpService
+          .uploadFile(connectionId, localPath, remotePath, id)
+          .catch((e) => {
+            useTransferStore.getState().updateTask(id, {
+              status: "error",
+              error: String(e),
+            });
+          });
+      });
+      return Promise.allSettled(promises).then(() => {
+        void loadDir(targetDir, true);
+      });
+    },
+    [connectionId, addTask, loadDir, ensureTransferTab],
+  );
+
+  const handleUpload = useCallback(
+    async (targetDir: string) => {
+      closeMenu();
+      const selected = await open({
+        multiple: true,
+        filters: [{ name: "所有文件", extensions: ["*"] }],
+      });
+      if (!selected || selected.length === 0) return;
+      startUpload(targetDir, selected);
+    },
+    [closeMenu, startUpload],
+  );
+
+  const [dragOver, setDragOver] = useState(false);
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
+  const dragOverDirRef = useRef("/");
+  const hoverExpandTimerRef = useRef<number | null>(null);
+
+  const handleDragOver = useCallback(
+    (e: ReactDragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      const target = (e.target as HTMLElement).closest(
+        "[data-tree-path]",
+      ) as HTMLElement | null;
+      let dir = "/";
+      let dirIsDir = false;
+      if (target) {
+        const path = target.getAttribute("data-tree-path")!;
+        const isDir = target.getAttribute("data-tree-is-dir") === "true";
+        dir = isDir ? path : parentDirOfPath(path);
+        dirIsDir = isDir;
+      }
+      if (dir !== dragOverDirRef.current) {
+        dragOverDirRef.current = dir;
+        if (hoverExpandTimerRef.current !== null) {
+          clearTimeout(hoverExpandTimerRef.current);
+          hoverExpandTimerRef.current = null;
+        }
+        if (dirIsDir && dir !== "/") {
+          hoverExpandTimerRef.current = window.setTimeout(() => {
+            hoverExpandTimerRef.current = null;
+            setExpandedPaths((prev) =>
+              prev.has(dir) ? prev : new Set(prev).add(dir),
+            );
+            void loadDir(dir);
+          }, 600);
+        }
+      }
+      setDragOver(true);
+      setDragOverPath(dir === "/" ? null : dir);
+    },
+    [loadDir],
+  );
+
+  const handleDragLeave = useCallback((e: ReactDragEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    if (
+      related &&
+      (related.closest("[data-file-explorer-dropzone]") ||
+        related.closest("[data-tree-path]"))
+    )
+      return;
+    setDragOver(false);
+    setDragOverPath(null);
+    if (hoverExpandTimerRef.current !== null) {
+      clearTimeout(hoverExpandTimerRef.current);
+      hoverExpandTimerRef.current = null;
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: ReactDragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(false);
+      setDragOverPath(null);
+      if (hoverExpandTimerRef.current !== null) {
+        clearTimeout(hoverExpandTimerRef.current);
+        hoverExpandTimerRef.current = null;
+      }
+      const files = Array.from(e.dataTransfer.files ?? []);
+      if (files.length === 0) return;
+      const targetDir = dragOverDirRef.current;
+      const directPaths: string[] = [];
+      const tempNeeded: File[] = [];
+      for (const f of files) {
+        const p = (f as unknown as { path?: string }).path;
+        if (p) directPaths.push(p);
+        else tempNeeded.push(f);
+      }
+      if (directPaths.length > 0) void startUpload(targetDir, directPaths);
+      if (tempNeeded.length > 0) {
+        const MAX_DRAG_SIZE = 50 * 1024 * 1024;
+        const tooLarge = tempNeeded.filter((f) => f.size > MAX_DRAG_SIZE);
+        const okFiles = tempNeeded.filter((f) => f.size <= MAX_DRAG_SIZE);
+        if (tooLarge.length > 0) {
+          await dialogAlert(
+            "文件过大",
+            `以下文件超过 50MB，请用右键菜单"上传"选择文件：\n${tooLarge.map((f) => f.name).join("\n")}`,
+          );
+        }
+        if (okFiles.length > 0) {
+          ensureTransferTab();
+          const promises = okFiles.map(async (f) => {
+            const remotePath =
+              targetDir === "/" ? `/${f.name}` : `${targetDir}/${f.name}`;
+            const id = crypto.randomUUID();
+            addTask({
+              id,
+              connectionId,
+              direction: "upload",
+              filename: f.name,
+              remotePath,
+              localPath: "(拖拽)",
+              transferred: 0,
+              total: f.size,
+              status: "pending",
+              error: null,
+            });
+            try {
+              const base64 = await fileToBase64(f);
+              await sftpService.uploadFromBase64(
+                connectionId,
+                remotePath,
+                base64,
+                id,
+              );
+            } catch (e) {
+              useTransferStore.getState().updateTask(id, {
+                status: "error",
+                error: String(e),
+              });
+            }
+          });
+          void Promise.allSettled(promises).then(() => {
+            void loadDir(targetDir, true);
+          });
+        }
+      }
+    },
+    [connectionId, addTask, loadDir, ensureTransferTab],
+  );
+
   const handleCdToTerminal = useCallback(
     async (entry: FileEntry) => {
       closeMenu();
@@ -363,12 +612,14 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
 
   const handleCollapseAll = () => setExpandedPaths(new Set(["/"]));
 
+  const searchGenRef = useRef(0);
   const handleSearch = useCallback(async () => {
     const q = searchQuery.trim();
     if (!q) {
       setSearchResults(null);
       return;
     }
+    const gen = ++searchGenRef.current;
     setSearching(true);
     try {
       const pattern = shellQuote(`*${q}*`);
@@ -382,6 +633,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           `find / -iname ${pattern} -maxdepth 6 -type f 2>/dev/null`,
         ),
       ]);
+      if (gen !== searchGenRef.current) return;
       const dirs = dirRes.stdout
         .split("\n")
         .filter(Boolean)
@@ -396,15 +648,18 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
       });
       setSearchResults(items);
     } catch {
+      if (gen !== searchGenRef.current) return;
       setSearchResults([]);
     } finally {
-      setSearching(false);
+      if (gen === searchGenRef.current) setSearching(false);
     }
   }, [connectionId, searchQuery]);
 
   const clearSearch = () => {
+    searchGenRef.current++;
     setSearchQuery("");
     setSearchResults(null);
+    setSearching(false);
   };
 
   const navigateToPath = useCallback(
@@ -501,9 +756,10 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         <Fragment key={entry.path}>
           <div
             data-tree-path={entry.path}
+            data-tree-is-dir={isDir}
             className={`flex cursor-pointer items-center gap-1 py-1 pr-2 text-sm transition-colors hover:bg-accent-soft ${
               isDir ? "font-medium" : ""
-            } ${highlightPath === entry.path ? "bg-accent-soft ring-1 ring-inset ring-accent" : ""}`}
+            } ${highlightPath === entry.path || (isDir && dragOverPath === entry.path) ? "bg-accent-soft ring-1 ring-inset ring-accent" : ""}`}
             style={{ paddingLeft: depth * 16 + 8 }}
             onClick={() => {
               if (isDir) toggleExpand(entry.path);
@@ -566,6 +822,13 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           title="全部收起"
         >
           <ChevronsDownUp size={14} />
+        </button>
+        <button
+          className="rounded p-1 hover:bg-default-soft"
+          onClick={ensureTransferTab}
+          title="传输队列"
+        >
+          <ListTree size={14} />
         </button>
         <div className="relative flex flex-1 items-center">
           <Search
@@ -634,8 +897,12 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         </div>
       ) : (
         <div
-          className="flex-1 overflow-y-auto"
+          data-file-explorer-dropzone
+          className={`flex-1 overflow-y-auto ${dragOver ? "ring-2 ring-accent ring-inset" : ""}`}
           onContextMenu={(e) => handleContextMenu(e, null, "/")}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
           {busy && (
             <div className="p-2 text-center text-xs text-muted">处理中...</div>
@@ -658,6 +925,11 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
                     icon={<FileCode size={14} />}
                     label="编辑"
                     onClick={() => handleOpenInEditor(menu.entry!)}
+                  />
+                  <MenuRow
+                    icon={<Download size={14} />}
+                    label="下载"
+                    onClick={() => handleDownload(menu.entry!)}
                   />
                   <div className="my-1 h-px bg-border" />
                 </>
@@ -700,6 +972,11 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
                 <>
                   <div className="my-1 h-px bg-border" />
                   <MenuRow
+                    icon={<Upload size={14} />}
+                    label="上传到此目录"
+                    onClick={() => handleUpload(menu.entry!.path)}
+                  />
+                  <MenuRow
                     icon={<FolderPlus size={14} />}
                     label="新建文件夹"
                     onClick={() => handleNewFolder(menu.entry!.path)}
@@ -715,6 +992,11 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
             </>
           ) : (
             <>
+              <MenuRow
+                icon={<Upload size={14} />}
+                label="上传"
+                onClick={() => handleUpload(menu.dirContext)}
+              />
               <MenuRow
                 icon={<FolderPlus size={14} />}
                 label="新建文件夹"

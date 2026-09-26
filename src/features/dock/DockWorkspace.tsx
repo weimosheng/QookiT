@@ -16,6 +16,7 @@ import {
   findTabByTool,
 } from "./dockStore";
 import { getTool, getTools } from "./toolRegistry";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { TabBar } from "./TabBar";
 import {
   findPaneWithTab,
@@ -425,7 +426,12 @@ function SideActivityBar({
 
   const tools = getTools();
   const toolSides = dock?.toolSides ?? {};
-  const sideTools = tools.filter((t) => (toolSides[t.id] ?? t.defaultSide) === side);
+  const hiddenTools = useSettingsStore((s) => s.hiddenTools);
+  const sideTools = tools.filter(
+    (t) =>
+      (toolSides[t.id] ?? t.defaultSide) === side &&
+      !hiddenTools.includes(t.id),
+  );
   const tree = dock?.[side] ?? null;
   const tabs = dock?.tabs ?? {};
 

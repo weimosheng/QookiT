@@ -20,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(|app| {
             use tauri::Manager;
@@ -52,6 +53,10 @@ pub fn run() {
             commands::sftp::sftp_remove_dir,
             commands::sftp::sftp_rename,
             commands::sftp::sftp_read_file,
+            commands::sftp::sftp_read_file_progress,
+            commands::sftp::sftp_download_file,
+            commands::sftp::sftp_upload_file,
+            commands::sftp::sftp_upload_from_base64,
             commands::sftp::sftp_write_file,
             commands::sftp::sftp_canonicalize,
             commands::sftp::ssh_exec,

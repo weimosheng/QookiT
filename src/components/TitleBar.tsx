@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useConnectionsStore } from "../stores/connectionsStore";
 import { useThemeStore } from "../stores/themeStore";
-import { X, Minus, Square, Sun, Moon, LayoutGrid } from "lucide-react";
+import { X, Minus, Square, Sun, Moon, LayoutGrid, Settings } from "lucide-react";
+import { SettingsModal } from "./SettingsModal";
 
 export function TitleBar() {
   const { tabs, activeTabId, setActive, disconnect } = useConnectionsStore();
   const { dark, toggle } = useThemeStore();
   const [maximized, setMaximized] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const win = getCurrentWindow();
 
@@ -77,6 +79,13 @@ export function TitleBar() {
         <span className="text-sm font-semibold text-accent pr-1">QookiT</span>
         <button
           className="rounded-md p-1.5 text-foreground hover:bg-default-soft transition-colors"
+          onClick={() => setSettingsOpen(true)}
+          title="设置"
+        >
+          <Settings size={14} />
+        </button>
+        <button
+          className="rounded-md p-1.5 text-foreground hover:bg-default-soft transition-colors"
           onClick={toggle}
           title={dark ? "切换到亮色模式" : "切换到暗色模式"}
         >
@@ -104,6 +113,7 @@ export function TitleBar() {
           <X size={14} />
         </button>
       </div>
+      <SettingsModal isOpen={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

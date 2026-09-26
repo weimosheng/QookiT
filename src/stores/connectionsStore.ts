@@ -39,17 +39,20 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
     }
   },
   disconnect: async (connectionId) => {
-    await connectionService.disconnect(connectionId);
-    set((s) => {
-      const tabs = s.tabs.filter((t) => t.connectionId !== connectionId);
-      const activeTabId =
-        s.activeTabId === connectionId
-          ? tabs.length > 0
-            ? tabs[tabs.length - 1].connectionId
-            : null
-          : s.activeTabId;
-      return { tabs, activeTabId };
-    });
+    try {
+      await connectionService.disconnect(connectionId);
+    } finally {
+      set((s) => {
+        const tabs = s.tabs.filter((t) => t.connectionId !== connectionId);
+        const activeTabId =
+          s.activeTabId === connectionId
+            ? tabs.length > 0
+              ? tabs[tabs.length - 1].connectionId
+              : null
+            : s.activeTabId;
+        return { tabs, activeTabId };
+      });
+    }
   },
   setActive: (connectionId) => {
     set({ activeTabId: connectionId });

@@ -23,6 +23,44 @@ export const sftpService = {
     invoke<void>("sftp_rename", { connectionId, from, to }),
   readFile: (connectionId: string, path: string) =>
     invoke<string>("sftp_read_file", { connectionId, path }),
+  readFileWithProgress: (connectionId: string, path: string) =>
+    invoke<string>("sftp_read_file_progress", { connectionId, path }),
+  downloadFile: (
+    connectionId: string,
+    remotePath: string,
+    localPath: string,
+    transferId: string,
+  ) =>
+    invoke<void>("sftp_download_file", {
+      connectionId,
+      remotePath,
+      localPath,
+      transferId,
+    }),
+  uploadFile: (
+    connectionId: string,
+    localPath: string,
+    remotePath: string,
+    transferId: string,
+  ) =>
+    invoke<void>("sftp_upload_file", {
+      connectionId,
+      localPath,
+      remotePath,
+      transferId,
+    }),
+  uploadFromBase64: (
+    connectionId: string,
+    remotePath: string,
+    dataBase64: string,
+    transferId: string,
+  ) =>
+    invoke<void>("sftp_upload_from_base64", {
+      connectionId,
+      remotePath,
+      dataBase64,
+      transferId,
+    }),
   writeFile: (connectionId: string, path: string, dataBase64: string) =>
     invoke<void>("sftp_write_file", { connectionId, path, dataBase64 }),
   canonicalize: (connectionId: string, path: string) =>

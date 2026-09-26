@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { sftpService } from "../../services/sftpService";
 import { useNavigationStore } from "../../stores/navigationStore";
@@ -196,6 +196,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
   const openTab = useDockStore((s) => s.openTab);
   const requestNavigate = useNavigationStore((s) => s.requestNavigate);
 
+  const searchGenRef = useRef(0);
   const runSearch = useCallback(async () => {
     const q = query.trim();
     if (!q) {
@@ -203,6 +204,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
       setTotalMatches(0);
       return;
     }
+    const gen = ++searchGenRef.current;
     setSearching(true);
     setError(null);
     try {
@@ -215,6 +217,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
         wholeWord,
       });
       const res = await sftpService.exec(connectionId, cmd);
+      if (gen !== searchGenRef.current) return;
       if (res.exit_code === 2) {
         setError(res.stderr.trim() || "grep 命令出错");
         setResults([]);
@@ -225,19 +228,22 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
       setResults(groups);
       setTotalMatches(groups.reduce((s, g) => s + g.matches.length, 0));
     } catch (e) {
+      if (gen !== searchGenRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
       setResults([]);
       setTotalMatches(0);
     } finally {
-      setSearching(false);
+      if (gen === searchGenRef.current) setSearching(false);
     }
   }, [query, fileGlob, searchPath, caseSensitive, useRegex, wholeWord, connectionId]);
 
   const clearAll = () => {
+    searchGenRef.current++;
     setQuery("");
     setResults(null);
     setTotalMatches(0);
     setError(null);
+    setSearching(false);
   };
 
   const toggleCollapse = (path: string) => {

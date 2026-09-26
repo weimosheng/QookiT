@@ -114,6 +114,83 @@ pub async fn sftp_read_file(
 }
 
 #[tauri::command]
+pub async fn sftp_read_file_progress(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    connection_id: String,
+    path: String,
+) -> AppResult<String> {
+    let entry = state.get_connection(&connection_id).await?;
+    let sftp_guard = entry.sftp.lock().await;
+    let sftp = sftp_guard
+        .as_ref()
+        .ok_or_else(|| AppError::Sftp("SFTP 未打开".into()))?;
+    let total_size = sftp.stat(&path).await.map(|e| e.size).unwrap_or(0);
+    let data = sftp
+        .read_file_with_progress(&path, total_size, &app, &connection_id)
+        .await?;
+    Ok(STANDARD.encode(&data))
+}
+
+#[tauri::command]
+pub async fn sftp_download_file(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    connection_id: String,
+    remote_path: String,
+    local_path: String,
+    transfer_id: String,
+) -> AppResult<()> {
+    let entry = state.get_connection(&connection_id).await?;
+    let sftp_guard = entry.sftp.lock().await;
+    let sftp = sftp_guard
+        .as_ref()
+        .ok_or_else(|| AppError::Sftp("SFTP 未打开".into()))?;
+    let total_size = sftp.stat(&remote_path).await.map(|e| e.size).unwrap_or(0);
+    sftp.download_to_local(&remote_path, &local_path, total_size, &app, &connection_id, &transfer_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn sftp_upload_file(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    connection_id: String,
+    local_path: String,
+    remote_path: String,
+    transfer_id: String,
+) -> AppResult<()> {
+    let entry = state.get_connection(&connection_id).await?;
+    let sftp_guard = entry.sftp.lock().await;
+    let sftp = sftp_guard
+        .as_ref()
+        .ok_or_else(|| AppError::Sftp("SFTP 未打开".into()))?;
+    sftp.upload_from_local(&local_path, &remote_path, &app, &connection_id, &transfer_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn sftp_upload_from_base64(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    connection_id: String,
+    remote_path: String,
+    data_base64: String,
+    transfer_id: String,
+) -> AppResult<()> {
+    let entry = state.get_connection(&connection_id).await?;
+    let sftp_guard = entry.sftp.lock().await;
+    let sftp = sftp_guard
+        .as_ref()
+        .ok_or_else(|| AppError::Sftp("SFTP 未打开".into()))?;
+    let data = STANDARD
+        .decode(&data_base64)
+        .map_err(|e| AppError::Other(format!("base64 解码失败: {e}")))?;
+    sftp.upload_from_bytes(&data, &remote_path, &app, &connection_id, &transfer_id)
+        .await
+}
+
+#[tauri::command]
 pub async fn sftp_write_file(
     state: State<'_, AppState>,
     connection_id: String,

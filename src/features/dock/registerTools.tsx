@@ -5,6 +5,7 @@ import { SearchPanel } from "../search/SearchPanel";
 import { CommandPalette } from "../command/CommandPalette";
 import { PerformancePanel } from "../performance/PerformancePanel";
 import { EditorPanel } from "../editor/EditorPanel";
+import { TransferQueuePanel } from "../transfer/TransferQueuePanel";
 import { terminalService } from "../../services/terminalService";
 import { dialogConfirm } from "../../lib/dialog";
 import {
@@ -14,6 +15,7 @@ import {
   Command as CommandIcon,
   Gauge,
   FileCode,
+  ListTree,
 } from "lucide-react";
 
 registerTool({
@@ -90,4 +92,13 @@ registerTool({
       true,
     );
   },
+});
+
+registerTool({
+  id: "transfer",
+  name: "传输队列",
+  icon: ListTree,
+  defaultTitle: "传输",
+  defaultSide: "bottom",
+  render: (connId) => <TransferQueuePanel connectionId={connId} />,
 });

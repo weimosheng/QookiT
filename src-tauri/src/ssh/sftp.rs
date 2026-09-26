@@ -1,7 +1,15 @@
 use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::OpenFlags;
 use serde::Serialize;
+use tauri::Emitter;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::{AppError, AppResult};
+use crate::events::{
+    EVENT_FILE_READ_PROGRESS, EVENT_FILE_TRANSFER_PROGRESS, FileReadProgressPayload,
+    FileTransferProgressPayload,
+};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FileEntry {
@@ -96,8 +104,220 @@ impl SftpManager {
         self.session.read(path).await.map_err(sftp_err)
     }
 
+    pub async fn read_file_with_progress(
+        &self,
+        path: &str,
+        total_size: u64,
+        app: &tauri::AppHandle,
+        connection_id: &str,
+    ) -> AppResult<Vec<u8>> {
+        let mut file = self.session.open(path).await.map_err(sftp_err)?;
+        let chunk_size = 64 * 1024;
+        let mut buffer = vec![0u8; chunk_size];
+        let mut all = Vec::with_capacity(total_size as usize);
+        loop {
+            let n = file.read(&mut buffer).await.map_err(sftp_err)?;
+            if n == 0 {
+                break;
+            }
+            all.extend_from_slice(&buffer[..n]);
+            let _ = app.emit(
+                EVENT_FILE_READ_PROGRESS,
+                FileReadProgressPayload {
+                    connection_id: connection_id.to_string(),
+                    path: path.to_string(),
+                    read_bytes: all.len() as u64,
+                    total_bytes: total_size,
+                },
+            );
+        }
+        Ok(all)
+    }
+
     pub async fn write_file(&self, path: &str, data: Vec<u8>) -> AppResult<()> {
         self.session.write(path, &data).await.map_err(sftp_err)
+    }
+
+    pub async fn download_to_local(
+        &self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        app: &tauri::AppHandle,
+        connection_id: &str,
+        transfer_id: &str,
+    ) -> AppResult<()> {
+        let mut remote = self.session.open(remote_path).await.map_err(sftp_err)?;
+        let mut local = File::create(local_path).await.map_err(sftp_err)?;
+        let filename = remote_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(remote_path)
+            .to_string();
+        let chunk_size = 64 * 1024;
+        let mut buffer = vec![0u8; chunk_size];
+        let mut transferred = 0u64;
+        loop {
+            let n = remote.read(&mut buffer).await.map_err(sftp_err)?;
+            if n == 0 {
+                break;
+            }
+            local.write_all(&buffer[..n]).await.map_err(sftp_err)?;
+            transferred += n as u64;
+            let _ = app.emit(
+                EVENT_FILE_TRANSFER_PROGRESS,
+                FileTransferProgressPayload {
+                    transfer_id: transfer_id.to_string(),
+                    connection_id: connection_id.to_string(),
+                    direction: "download".to_string(),
+                    filename: filename.clone(),
+                    transferred,
+                    total: total_size,
+                    status: "active".to_string(),
+                    error: None,
+                },
+            );
+        }
+        let _ = app.emit(
+            EVENT_FILE_TRANSFER_PROGRESS,
+            FileTransferProgressPayload {
+                transfer_id: transfer_id.to_string(),
+                connection_id: connection_id.to_string(),
+                direction: "download".to_string(),
+                filename,
+                transferred,
+                total: total_size,
+                status: "done".to_string(),
+                error: None,
+            },
+        );
+        Ok(())
+    }
+
+    pub async fn upload_from_local(
+        &self,
+        local_path: &str,
+        remote_path: &str,
+        app: &tauri::AppHandle,
+        connection_id: &str,
+        transfer_id: &str,
+    ) -> AppResult<()> {
+        let mut local = File::open(local_path).await.map_err(sftp_err)?;
+        let total_size = local.metadata().await.map_err(sftp_err)?.len();
+        let mut remote = self
+            .session
+            .open_with_flags(
+                remote_path,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            )
+            .await
+            .map_err(sftp_err)?;
+        let filename = local_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(local_path)
+            .to_string();
+        let chunk_size = 64 * 1024;
+        let mut buffer = vec![0u8; chunk_size];
+        let mut transferred = 0u64;
+        loop {
+            let n = local.read(&mut buffer).await.map_err(sftp_err)?;
+            if n == 0 {
+                break;
+            }
+            remote.write_all(&buffer[..n]).await.map_err(sftp_err)?;
+            transferred += n as u64;
+            let _ = app.emit(
+                EVENT_FILE_TRANSFER_PROGRESS,
+                FileTransferProgressPayload {
+                    transfer_id: transfer_id.to_string(),
+                    connection_id: connection_id.to_string(),
+                    direction: "upload".to_string(),
+                    filename: filename.clone(),
+                    transferred,
+                    total: total_size,
+                    status: "active".to_string(),
+                    error: None,
+                },
+            );
+        }
+        remote.flush().await.map_err(sftp_err)?;
+        let _ = app.emit(
+            EVENT_FILE_TRANSFER_PROGRESS,
+            FileTransferProgressPayload {
+                transfer_id: transfer_id.to_string(),
+                connection_id: connection_id.to_string(),
+                direction: "upload".to_string(),
+                filename,
+                transferred,
+                total: total_size,
+                status: "done".to_string(),
+                error: None,
+            },
+        );
+        Ok(())
+    }
+
+    pub async fn upload_from_bytes(
+        &self,
+        data: &[u8],
+        remote_path: &str,
+        app: &tauri::AppHandle,
+        connection_id: &str,
+        transfer_id: &str,
+    ) -> AppResult<()> {
+        let total_size = data.len() as u64;
+        let mut remote = self
+            .session
+            .open_with_flags(
+                remote_path,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            )
+            .await
+            .map_err(sftp_err)?;
+        let filename = remote_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(remote_path)
+            .to_string();
+        let chunk_size = 64 * 1024;
+        let mut transferred = 0u64;
+        while transferred < total_size {
+            let end = (transferred + chunk_size as u64).min(total_size);
+            remote
+                .write_all(&data[transferred as usize..end as usize])
+                .await
+                .map_err(sftp_err)?;
+            transferred = end;
+            let _ = app.emit(
+                EVENT_FILE_TRANSFER_PROGRESS,
+                FileTransferProgressPayload {
+                    transfer_id: transfer_id.to_string(),
+                    connection_id: connection_id.to_string(),
+                    direction: "upload".to_string(),
+                    filename: filename.clone(),
+                    transferred,
+                    total: total_size,
+                    status: "active".to_string(),
+                    error: None,
+                },
+            );
+        }
+        remote.flush().await.map_err(sftp_err)?;
+        let _ = app.emit(
+            EVENT_FILE_TRANSFER_PROGRESS,
+            FileTransferProgressPayload {
+                transfer_id: transfer_id.to_string(),
+                connection_id: connection_id.to_string(),
+                direction: "upload".to_string(),
+                filename,
+                transferred,
+                total: total_size,
+                status: "done".to_string(),
+                error: None,
+            },
+        );
+        Ok(())
     }
 
     pub async fn canonicalize(&self, path: &str) -> AppResult<String> {

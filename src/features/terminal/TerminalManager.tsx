@@ -13,6 +13,7 @@ import { Plus, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
 import { useThemeStore } from "../../stores/themeStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import {
   type LayoutNode,
   type PaneNode,
@@ -72,7 +73,12 @@ export function TerminalManager({ connectionId }: TerminalManagerProps) {
 
   const createTerminal = useCallback(
     async (targetPaneId?: string) => {
-      const id = await terminalService.open(connectionId, 80, 24);
+      const s = useSettingsStore.getState();
+      const id = await terminalService.open(
+        connectionId,
+        s.terminalCols,
+        s.terminalRows,
+      );
       titleCounter.current += 1;
       const title = `终端 ${titleCounter.current}`;
       const prev = layoutRef.current;

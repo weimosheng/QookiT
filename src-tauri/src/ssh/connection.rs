@@ -6,7 +6,7 @@ use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
-use tokio::time::Duration;
+use tokio::time::{timeout, Duration};
 
 use crate::error::{AppError, AppResult};
 use crate::events::{ConnectionLogPayload, EVENT_CONNECTION_LOG};
@@ -206,7 +206,15 @@ impl Connection {
         let mut exit_code: Option<i32> = None;
 
         loop {
-            match channel.wait().await {
+            let msg = match timeout(Duration::from_secs(30), channel.wait()).await {
+                Ok(m) => m,
+                Err(_) => {
+                    return Err(AppError::Other(
+                        "命令执行超时 (30s 无响应)".into(),
+                    ))
+                }
+            };
+            match msg {
                 Some(ChannelMsg::Data { ref data }) => {
                     stdout.extend_from_slice(data.as_ref());
                 }
@@ -232,9 +240,11 @@ impl Connection {
 
     pub async fn disconnect(&self) -> AppResult<()> {
         let handle = self.handle.lock().await;
-        handle
-            .disconnect(russh::Disconnect::ByApplication, "bye", "en")
-            .await?;
+        let _ = timeout(
+            Duration::from_secs(5),
+            handle.disconnect(russh::Disconnect::ByApplication, "bye", "en"),
+        )
+        .await;
         Ok(())
     }
 }

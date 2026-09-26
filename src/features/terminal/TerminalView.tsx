@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import { terminalService } from "../../services/terminalService";
 import { useThemeStore } from "../../stores/themeStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { useCommandStore } from "../../stores/commandStore";
 import { TERMINAL_DATA_EVENT, TERMINAL_EXIT_EVENT } from "../../types/events";
 import type { TerminalDataPayload, TerminalExitPayload } from "../../types/events";
@@ -104,10 +105,14 @@ function base64ToBytes(base64: string): Uint8Array {
 export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
 
   const dark = useThemeStore((s) => s.dark);
+  const terminalFontFamily = useSettingsStore((s) => s.terminalFontFamily);
+  const terminalFontSize = useSettingsStore((s) => s.terminalFontSize);
+  const terminalScrollback = useSettingsStore((s) => s.terminalScrollback);
 
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
@@ -117,9 +122,11 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
 
     let disposed = false;
 
+    const s = useSettingsStore.getState();
     const term = new Terminal({
-      fontFamily: "Consolas, Monaco, 'Courier New', monospace",
-      fontSize: 14,
+      fontFamily: s.terminalFontFamily,
+      fontSize: s.terminalFontSize,
+      scrollback: s.terminalScrollback,
       cursorBlink: true,
       allowProposedApi: true,
       theme: terminalTheme(dark),
@@ -127,6 +134,7 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     termRef.current = term;
 
     const fitAddon = new FitAddon();
+    fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
@@ -184,8 +192,23 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
       unlistenExit.then((f) => f());
       term.dispose();
       termRef.current = null;
+      fitAddonRef.current = null;
     };
   }, [connectionId, terminalId]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.fontFamily = terminalFontFamily;
+    term.options.fontSize = terminalFontSize;
+    term.options.scrollback = terminalScrollback;
+    term.refresh(0, term.rows - 1);
+    try {
+      fitAddonRef.current?.fit();
+    } catch {
+      // ignore
+    }
+  }, [terminalFontFamily, terminalFontSize, terminalScrollback]);
 
   useEffect(() => {
     const term = termRef.current;

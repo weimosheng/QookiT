@@ -1,3 +1,5 @@
+import { useSettingsStore } from "../stores/settingsStore";
+
 export interface Host {
   id: string;
   name: string;
@@ -17,12 +19,13 @@ export type AuthMethod =
 
 export function createEmptyHost(): Host {
   const now = new Date().toISOString();
+  const s = useSettingsStore.getState();
   return {
     id: crypto.randomUUID(),
     name: "",
     host: "",
-    port: 22,
-    username: "root",
+    port: s.defaultPort,
+    username: s.defaultUsername,
     auth: { type: "password", password: "" },
     group: null,
     initial_dir: null,

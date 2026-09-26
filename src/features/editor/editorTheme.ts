@@ -115,13 +115,13 @@ function highlight(p: Palette): HighlightStyle {
   ]);
 }
 
-function baseTheme(p: Palette, dark: boolean): Extension {
+function baseTheme(p: Palette, dark: boolean, fontSize: number): Extension {
   return EditorView.theme(
     {
       "&": {
         color: p.fg,
         backgroundColor: p.bg,
-        fontSize: "13px",
+        fontSize: `${fontSize}px`,
         height: "100%",
       },
       ".cm-content": {
@@ -193,7 +193,7 @@ function baseTheme(p: Palette, dark: boolean): Extension {
   );
 }
 
-export function editorTheme(dark: boolean): Extension {
+export function editorTheme(dark: boolean, fontSize: number = 13): Extension {
   const p = dark ? DARK : LIGHT;
-  return [baseTheme(p, dark), syntaxHighlighting(highlight(p))];
+  return [baseTheme(p, dark, fontSize), syntaxHighlighting(highlight(p))];
 }

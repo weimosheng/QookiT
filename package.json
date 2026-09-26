@@ -1,7 +1,7 @@
 {
   "name": "qookit",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "QookiT - 一个基于 Tauri 2 与 russh 的可扩展 SSH 客户端",
   "license": "GPL-3.0-or-later",
   "type": "module",
@@ -9,7 +9,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "bump": "node scripts/bump-version.mjs",
+    "release:patch": "node scripts/bump-version.mjs patch && npm run tauri build",
+    "release:minor": "node scripts/bump-version.mjs minor && npm run tauri build",
+    "release:major": "node scripts/bump-version.mjs major && npm run tauri build"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -36,6 +40,7 @@
     "@lezer/highlight": "^1.2.4",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-updater": "^2.12.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",

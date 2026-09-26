@@ -110,6 +110,7 @@ jobs:
         run: pnpm tauri build --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}
         env:
           CI: true
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
       - name: 收集产物 (Windows)
         if: runner.os == 'Windows'
@@ -121,6 +122,7 @@ jobs:
           mkdir -p "$STAGING"
           # 安装包：NSIS exe（MSIX 在后续步骤生成）
           find "$BUNDLE/nsis" -name '*.exe' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/nsis" -name '*.exe.sig' -exec cp {} "$STAGING/" \; 2>/dev/null || true
           # 便携式：单文件可执行程序（Tauri 2 资源默认嵌入二进制）
           EXE="src-tauri/target/${{ matrix.rust_target }}/release/qookit.exe"
           if [ -f "$EXE" ]; then
@@ -194,6 +196,7 @@ jobs:
           mkdir -p "$STAGING"
           # 安装包：dmg
           find "$BUNDLE/dmg" -name '*.dmg' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/dmg" -name '*.dmg.sig' -exec cp {} "$STAGING/" \; 2>/dev/null || true
           # 便携式：打包 .app 目录
           APP=$(find "$BUNDLE/macos" -name '*.app' -type d | head -n1)
           if [ -n "$APP" ]; then
@@ -214,9 +217,10 @@ jobs:
           mkdir -p "$STAGING"
           # 安装包：deb / rpm
           find "$BUNDLE/deb" -name '*.deb' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/deb" -name '*.deb.sig' -exec cp {} "$STAGING/" \; 2>/dev/null || true
           find "$BUNDLE/rpm" -name '*.rpm' -exec cp {} "$STAGING/" \; 2>/dev/null || true
-          # 便携式：AppImage（单文件可直接运行）
           find "$BUNDLE/appimage" -name '*.AppImage' -exec cp {} "$STAGING/" \; 2>/dev/null || true
+          find "$BUNDLE/appimage" -name '*.AppImage.sig' -exec cp {} "$STAGING/" \; 2>/dev/null || true
           # 便携式：裸可执行文件 tar.gz
           BIN="src-tauri/target/${{ matrix.rust_target }}/release/qookit"
           if [ -f "$BIN" ]; then
@@ -276,6 +280,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: python3 .github/scripts/gen_release_body.py
 
+      - name: 生成 latest.json (updater)
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/gen_latest_json.py
+
       - name: 创建 Release 并上传资产
         uses: softprops/action-gh-release@v2
         with:
@@ -284,5 +295,7 @@ jobs:
           draft: false
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
-          files: release-assets/*
+          files: |
+            release-assets/*
+            latest.json
           body_path: body.md
