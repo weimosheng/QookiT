@@ -5,9 +5,11 @@ import { DialogHost } from "./components/DialogHost";
 import { ConnectionWorkspace } from "./features/connection/ConnectionWorkspace";
 import { useConnectionsStore } from "./stores/connectionsStore";
 import { usePackagingStore } from "./stores/packagingStore";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 
 function App() {
   const { tabs, activeTabId } = useConnectionsStore();
+  useGlobalShortcuts();
 
   // 判断是否为 Microsoft Store / MSIX 安装，决定是否提供自更新入口。
   useEffect(() => {

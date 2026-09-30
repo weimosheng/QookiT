@@ -8,6 +8,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::error::{AppError, AppResult};
 use crate::ssh::Connection;
 use crate::state::{AppState, ConnectionEntry};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Serialize)]
 pub struct ConnectionInfo {
@@ -28,9 +29,27 @@ pub async fn connect_host(
         .find(|h| h.id == host_id)
         .ok_or_else(|| AppError::HostNotFound(host_id.clone()))?;
 
-    let connection =
-        Connection::connect(&app, &host_id, &host.host, host.port, &host.username, &host.auth)
-            .await?;
+    let cancel = CancellationToken::new();
+    state
+        .connecting
+        .lock()
+        .await
+        .insert(host_id.clone(), cancel.clone());
+
+    let result = Connection::connect(
+        &app,
+        &host_id,
+        &host.host,
+        host.port,
+        &host.username,
+        &host.auth,
+        cancel,
+    )
+    .await;
+
+    state.connecting.lock().await.remove(&host_id);
+
+    let connection = result?;
     let connection_id = connection.id.clone();
     let host_name = host.name.clone();
 
@@ -51,6 +70,15 @@ pub async fn connect_host(
         host_id,
         host_name,
     })
+}
+
+/// 取消进行中的连接：按 host_id 找到取消令牌并触发中断。
+#[tauri::command]
+pub async fn cancel_connect(state: State<'_, AppState>, host_id: String) -> AppResult<()> {
+    if let Some(token) = state.connecting.lock().await.remove(&host_id) {
+        token.cancel();
+    }
+    Ok(())
 }
 
 #[tauri::command]

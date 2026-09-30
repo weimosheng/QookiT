@@ -26,7 +26,12 @@ import {
   Download,
   Check,
   AlertTriangle,
+  Keyboard,
 } from "lucide-react";
+import { shortcutActions, type ShortcutGroup } from "../lib/shortcutActions";
+import { DEFAULT_SHORTCUTS } from "../lib/shortcutDefaults";
+import { formatCombo } from "../lib/keycombo";
+import { ShortcutRecorder } from "./ShortcutRecorder";
 
 const APP_VERSION = pkg.version;
 const REPO_URL = "https://github.com/weimosheng/QookiT";
@@ -36,7 +41,7 @@ interface SettingsModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type Category = "appearance" | "terminal" | "editor" | "connection" | "layout" | "about";
+type Category = "appearance" | "terminal" | "editor" | "connection" | "layout" | "shortcuts" | "about";
 
 export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
   const { dark, toggle } = useThemeStore();
@@ -141,6 +146,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
     { id: "editor", label: "编辑器", icon: <Code2 size={15} /> },
     { id: "connection", label: "连接", icon: <Plug size={15} /> },
     { id: "layout", label: "布局", icon: <LayoutGrid size={15} /> },
+    { id: "shortcuts", label: "快捷键", icon: <Keyboard size={15} /> },
     { id: "about", label: "关于", icon: <Info size={15} /> },
   ];
 
@@ -366,6 +372,8 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                         })}
                     </Section>
                   )}
+
+                  {category === "shortcuts" && <ShortcutSection />}
 
                   {category === "about" && (
                     <div className="flex flex-col gap-4 py-2">
@@ -649,5 +657,78 @@ function TextInput({
       onChange={(e) => onChange(e.target.value)}
       className="w-52 rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
     />
+  );
+}
+
+function ShortcutSection() {
+  const settings = useSettingsStore();
+  const [conflict, setConflict] = useState<string | null>(null);
+
+  const handleChange = (actionId: string, combo: string) => {
+    const owner = Object.entries(settings.shortcuts).find(
+      ([id, key]) => id !== actionId && key === combo && key !== "",
+    );
+    if (owner) {
+      const ownerLabel =
+        shortcutActions.find((a) => a.id === owner[0])?.label ?? owner[0];
+      setConflict(`「${formatCombo(combo)}」已绑定到「${ownerLabel}」`);
+      return;
+    }
+    setConflict(null);
+    settings.update({
+      shortcuts: { ...settings.shortcuts, [actionId]: combo },
+    });
+  };
+
+  const handleClear = (actionId: string) => {
+    setConflict(null);
+    settings.update({
+      shortcuts: { ...settings.shortcuts, [actionId]: "" },
+    });
+  };
+
+  const handleResetAll = () => {
+    setConflict(null);
+    settings.update({ shortcuts: { ...DEFAULT_SHORTCUTS } });
+  };
+
+  const groups: { id: ShortcutGroup; label: string }[] = [
+    { id: "general", label: "通用" },
+    { id: "tools", label: "工具" },
+    { id: "connection", label: "连接" },
+  ];
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between py-2">
+        <h3 className="text-sm font-medium text-foreground">快捷键</h3>
+        <button
+          type="button"
+          onClick={handleResetAll}
+          className="text-xs text-accent hover:underline"
+        >
+          恢复默认
+        </button>
+      </div>
+      {conflict && <p className="pb-2 text-xs text-danger">{conflict}</p>}
+      {groups.map((g) => (
+        <div key={g.id} className="flex flex-col">
+          <p className="py-1.5 text-xs text-muted">{g.label}</p>
+          <div className="divide-y divide-border">
+            {shortcutActions
+              .filter((a) => a.group === g.id)
+              .map((a) => (
+                <Row key={a.id} label={a.label}>
+                  <ShortcutRecorder
+                    value={settings.shortcuts[a.id] ?? ""}
+                    onChange={(combo) => handleChange(a.id, combo)}
+                    onClear={() => handleClear(a.id)}
+                  />
+                </Row>
+              ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

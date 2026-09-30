@@ -8,6 +8,7 @@ export interface ConnectionInfo {
 
 export const connectionService = {
   connect: (hostId: string) => invoke<ConnectionInfo>("connect_host", { hostId }),
+  cancelConnect: (hostId: string) => invoke<void>("cancel_connect", { hostId }),
   disconnect: (connectionId: string) =>
     invoke<void>("disconnect_host", { connectionId }),
   /** 该主机已记录的主机密钥（`算法 指纹`，来自 ~/.ssh/known_hosts）。 */

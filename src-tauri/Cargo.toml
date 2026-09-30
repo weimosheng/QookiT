@@ -1,6 +1,6 @@
 [package]
 name = "qookit"
-version = "1.1.0"
+version = "1.2.0"
 description = "QookiT - 一个基于 russh 的可扩展 SSH 客户端"
 authors = ["QookiT"]
 license = "GPL-3.0-or-later"
@@ -29,6 +29,7 @@ russh-sftp = "2.4"
 
 # 异步运行时
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 async-trait = "0.1"
 futures = "0.3"
 bytes = "1"

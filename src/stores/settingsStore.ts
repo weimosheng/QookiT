@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { DEFAULT_SHORTCUTS } from "../lib/shortcutDefaults";
 
 export interface SettingsValues {
   terminalFontFamily: string;
@@ -15,6 +16,8 @@ export interface SettingsValues {
   defaultPort: number;
   defaultUsername: string;
   hiddenTools: string[];
+  /** 动作 ID → 组合键字符串；空串表示未绑定 */
+  shortcuts: Record<string, string>;
 }
 
 export interface SettingsState extends SettingsValues {
@@ -34,6 +37,7 @@ const DEFAULTS: SettingsValues = {
   defaultPort: 22,
   defaultUsername: "root",
   hiddenTools: [],
+  shortcuts: { ...DEFAULT_SHORTCUTS },
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -44,6 +48,14 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "qookit-settings",
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<SettingsState>;
+        return {
+          ...current,
+          ...p,
+          shortcuts: { ...DEFAULTS.shortcuts, ...(p.shortcuts ?? {}) },
+        };
+      },
     },
   ),
 );

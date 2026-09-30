@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 
 use crate::error::{AppError, AppResult};
 use crate::hosts::HostStore;
@@ -21,6 +22,8 @@ pub struct ConnectionEntry {
 pub struct AppState {
     pub store: HostStore,
     pub connections: Arc<Mutex<HashMap<String, Arc<ConnectionEntry>>>>,
+    /// 进行中的连接：host_id → 取消令牌。cancel_connect 据此中断握手。
+    pub connecting: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl AppState {
@@ -28,6 +31,7 @@ impl AppState {
         Self {
             store,
             connections: Arc::new(Mutex::new(HashMap::new())),
+            connecting: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

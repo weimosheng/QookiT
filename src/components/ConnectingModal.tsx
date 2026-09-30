@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Loader2, CheckCircle2, XCircle, Circle } from "lucide-react";
 import { CONNECTION_LOG_EVENT } from "../types/events";
 import type { ConnectionLogPayload } from "../types/events";
+import { connectionService } from "../services/connectionService";
 
 interface LogEntry {
   step: string;
@@ -33,6 +34,9 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const cancelledRef = useRef(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const state = useOverlayState({ isOpen, onOpenChange: (open) => !open && onClose() });
@@ -48,6 +52,9 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
       setLogs([]);
       setFinished(false);
       setHasError(false);
+      setCancelled(false);
+      setCancelling(false);
+      cancelledRef.current = false;
       startedRef.current = false;
       connectStartedRef.current = false;
       return;
@@ -69,6 +76,12 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
           timestamp: Date.now(),
         };
         setLogs((prev) => [...prev, entry]);
+        if (entry.status === "cancelled") {
+          cancelledRef.current = true;
+          setCancelled(true);
+          setHasError(false);
+          setFinished(true);
+        }
         if (entry.status === "error") {
           setHasError(true);
           setFinished(true);
@@ -89,7 +102,7 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
       if (connectStartedRef.current) return;
       connectStartedRef.current = true;
       onConnectRef.current().catch(() => {
-        setHasError(true);
+        if (!cancelledRef.current) setHasError(true);
         setFinished(true);
       });
     };
@@ -108,17 +121,27 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
   }, [logs]);
 
   useEffect(() => {
-    if (finished && !hasError) {
+    if (finished && !hasError && !cancelled) {
       const timer = setTimeout(onClose, 600);
       return () => clearTimeout(timer);
     }
-  }, [finished, hasError, onClose]);
+  }, [finished, hasError, cancelled, onClose]);
+
+  const handleCancel = async () => {
+    if (cancelling || finished) return;
+    setCancelling(true);
+    try {
+      await connectionService.cancelConnect(hostId);
+    } catch {
+      // 后端可能已自行结束，忽略
+    }
+  };
 
   const stepStatus = (step: string): "pending" | "active" | "success" | "error" => {
     const stepLogs = logs.filter((l) => l.step === step);
     if (stepLogs.some((l) => l.status === "error")) return "error";
     if (stepLogs.some((l) => l.status === "success")) return "success";
-    if (hasError) return "error";
+    if (hasError || cancelled) return "error";
     if (stepLogs.length > 0) return "active";
     return "pending";
   };
@@ -130,7 +153,13 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
           <Modal.Dialog>
             <Modal.Header>
               <Modal.Heading>
-                {hasError ? "连接失败" : finished ? "连接成功" : `正在连接 ${hostName}`}
+                {hasError
+                  ? "连接失败"
+                  : cancelled
+                    ? "连接已取消"
+                    : finished
+                      ? "连接成功"
+                      : `正在连接 ${hostName}`}
               </Modal.Heading>
             </Modal.Header>
             <Modal.Body>
@@ -178,13 +207,23 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button
-                variant={hasError ? "danger" : "ghost"}
-                onPress={onClose}
-                isDisabled={!finished}
-              >
-                {hasError ? "关闭" : "完成"}
-              </Button>
+              {!finished && (
+                <Button
+                  variant="ghost"
+                  onPress={handleCancel}
+                  isDisabled={cancelling}
+                >
+                  {cancelling ? "取消中…" : "取消"}
+                </Button>
+              )}
+              {finished && (
+                <Button
+                  variant={hasError || cancelled ? "danger" : "ghost"}
+                  onPress={onClose}
+                >
+                  {hasError || cancelled ? "关闭" : "完成"}
+                </Button>
+              )}
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

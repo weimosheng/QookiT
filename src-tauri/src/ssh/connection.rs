@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
+use tokio_util::sync::CancellationToken;
 
 use crate::error::{AppError, AppResult};
 use crate::events::{ConnectionLogPayload, EVENT_CONNECTION_LOG};
@@ -120,6 +121,7 @@ impl Connection {
         port: u16,
         username: &str,
         auth: &AuthMethod,
+        cancel: CancellationToken,
     ) -> AppResult<Self> {
         let emit_log = |step: &str, message: &str, status: &str| {
             let _ = app.emit(
@@ -145,20 +147,23 @@ impl Connection {
         };
 
         emit_log("tcp", &format!("正在建立 TCP 连接 {}:{}...", host, port), "start");
-        let mut handle: Handle<ClientHandler> = match tokio::time::timeout(
-            CONNECT_TIMEOUT,
-            client::connect(config, (host, port), handler),
-        )
-        .await
-        {
-            Ok(Ok(h)) => h,
-            Ok(Err(e)) => {
-                emit_log("tcp", &format!("连接失败: {}", e), "error");
-                return Err(e.into());
+        let mut handle: Handle<ClientHandler> = tokio::select! {
+            r = timeout(CONNECT_TIMEOUT, client::connect(config, (host, port), handler)) => {
+                match r {
+                    Ok(Ok(h)) => h,
+                    Ok(Err(e)) => {
+                        emit_log("tcp", &format!("连接失败: {}", e), "error");
+                        return Err(e.into());
+                    }
+                    Err(_) => {
+                        emit_log("tcp", "连接超时：主机不可达或端口未开放", "error");
+                        return Err(AppError::Ssh("连接超时".into()));
+                    }
+                }
             }
-            Err(_) => {
-                emit_log("tcp", "连接超时：主机不可达或端口未开放", "error");
-                return Err(AppError::Ssh("连接超时".into()));
+            _ = cancel.cancelled() => {
+                emit_log("tcp", "连接已取消", "cancelled");
+                return Err(AppError::Cancelled);
             }
         };
         emit_log("tcp", "TCP 连接已建立", "success");
@@ -174,20 +179,23 @@ impl Connection {
         let auth_ok = match &cred {
             AuthCredential::Password(pw) => {
                 emit_log("auth", "使用密码认证", "info");
-                match tokio::time::timeout(
-                    AUTH_TIMEOUT,
-                    handle.authenticate_password(username, pw),
-                )
-                .await
-                {
-                    Ok(Ok(r)) => r,
-                    Ok(Err(e)) => {
-                        emit_log("auth", &format!("认证错误: {}", e), "error");
-                        return Err(e.into());
+                tokio::select! {
+                    r = timeout(AUTH_TIMEOUT, handle.authenticate_password(username, pw)) => {
+                        match r {
+                            Ok(Ok(r)) => r,
+                            Ok(Err(e)) => {
+                                emit_log("auth", &format!("认证错误: {}", e), "error");
+                                return Err(e.into());
+                            }
+                            Err(_) => {
+                                emit_log("auth", "认证超时", "error");
+                                return Err(AppError::Auth("认证超时".into()));
+                            }
+                        }
                     }
-                    Err(_) => {
-                        emit_log("auth", "认证超时", "error");
-                        return Err(AppError::Auth("认证超时".into()));
+                    _ = cancel.cancelled() => {
+                        emit_log("auth", "连接已取消", "cancelled");
+                        return Err(AppError::Cancelled);
                     }
                 }
             }
@@ -196,23 +204,26 @@ impl Connection {
                 let AuthCredential::PublicKey(pair) = cred else {
                     unreachable!()
                 };
-                match tokio::time::timeout(
-                    AUTH_TIMEOUT,
-                    handle.authenticate_publickey(
+                tokio::select! {
+                    r = timeout(AUTH_TIMEOUT, handle.authenticate_publickey(
                         username,
                         PrivateKeyWithHashAlg::new(Arc::new(pair), None),
-                    ),
-                )
-                .await
-                {
-                    Ok(Ok(r)) => r,
-                    Ok(Err(e)) => {
-                        emit_log("auth", &format!("认证错误: {}", e), "error");
-                        return Err(e.into());
+                    )) => {
+                        match r {
+                            Ok(Ok(r)) => r,
+                            Ok(Err(e)) => {
+                                emit_log("auth", &format!("认证错误: {}", e), "error");
+                                return Err(e.into());
+                            }
+                            Err(_) => {
+                                emit_log("auth", "认证超时", "error");
+                                return Err(AppError::Auth("认证超时".into()));
+                            }
+                        }
                     }
-                    Err(_) => {
-                        emit_log("auth", "认证超时", "error");
-                        return Err(AppError::Auth("认证超时".into()));
+                    _ = cancel.cancelled() => {
+                        emit_log("auth", "连接已取消", "cancelled");
+                        return Err(AppError::Cancelled);
                     }
                 }
             }

@@ -112,6 +112,7 @@ pub fn run() {
             commands::hosts::update_host,
             commands::hosts::delete_host,
             commands::connection::connect_host,
+            commands::connection::cancel_connect,
             commands::connection::disconnect_host,
             commands::connection::ping_host,
             commands::connection::forget_host_key,
