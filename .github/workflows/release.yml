@@ -103,6 +103,43 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      # Tauri 打包时会从 tauri-apps/binary-releases 现下工具链（NSIS / linuxdeploy / WiX 等），
+      # 上游偶发 5xx 会让整个发布失败。缓存这份目录后，正常情况下只需下载一次。
+      - name: 缓存 Tauri 打包工具链
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/tauri
+            ~/.cache/tauri
+            ~/Library/Caches/tauri
+          key: tauri-toolchain-${{ runner.os }}-${{ runner.arch }}-nsis3.11
+          restore-keys: |
+            tauri-toolchain-${{ runner.os }}-${{ runner.arch }}-
+
+      # 缓存未命中时先带重试下载 NSIS，避免上游一次 500 就中断发布
+      - name: 预下载 NSIS 工具链（带重试）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cache = "$env:LOCALAPPDATA\tauri\NSIS"
+          if (Test-Path "$cache\makensis.exe") {
+            Write-Host "NSIS 已有缓存，跳过下载"
+            exit 0
+          }
+          $url = "https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip"
+          $zip = "$env:RUNNER_TEMP\nsis-3.11.zip"
+          curl.exe -L --fail --retry 5 --retry-delay 5 --retry-all-errors -o $zip $url
+          if ($LASTEXITCODE -ne 0) { throw "NSIS 工具链下载失败（curl 退出码 $LASTEXITCODE）" }
+          $tmp = "$env:RUNNER_TEMP\nsis-extract"
+          Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zip -DestinationPath $tmp -Force
+          # 压缩包可能平铺，也可能带一层 nsis-3.11/ 目录，两种都兼容
+          $src = if (Test-Path "$tmp\nsis-3.11") { "$tmp\nsis-3.11" } else { $tmp }
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          Copy-Item "$src\*" $cache -Recurse -Force
+          if (-not (Test-Path "$cache\makensis.exe")) { throw "NSIS 解压后未找到 makensis.exe" }
+          Write-Host "NSIS 已就绪: $cache"
+
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
