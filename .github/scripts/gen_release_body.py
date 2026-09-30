@@ -72,7 +72,7 @@ body = f"""## QookiT {version}
 {store_line}
 
 > macOS 版本未做代码签名与公证，首次打开请在「系统设置 → 隐私与安全性」点击「仍要打开」。
-> Windows `.msix`：配置 `MSIX_PACKAGE_NAME`+`MSIX_PUBLISHER`（自签名证书 Subject 需与 Publisher 一致）；商店上传包用 `MSIX_STORE_PACKAGE_NAME`+`MSIX_STORE_PUBLISHER`，详见 `MSIX_STORE.md`。
+> Windows `.msix`：侧载包（自签名，安装前需信任证书）；商店上传包保持未签名，由维护者用于 Microsoft Store 提交。
 > 从 Microsoft Store 安装的版本可在应用内直接触发商店更新（由 Microsoft Store 下载并安装）；侧载 `.msix` 无此通道，请手动下载新版本覆盖安装。
 """
 

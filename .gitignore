@@ -27,6 +27,9 @@ lerna-debug.log*
 .copilot/
 temp/
 
+# 上架操作手册：含内部发布流程与密钥名称，仅本地保留
+/MSIX_STORE.md
+
 # ---------- Python 缓存 ----------
 __pycache__/
 *.pyc
