@@ -8,7 +8,8 @@
             Version="__VERSION__.0" />
   <Properties>
     <DisplayName>QookiT</DisplayName>
-    <PublisherDisplayName>QookiT</PublisherDisplayName>
+    <!-- 商店包必须逐字等于合作伙伴中心的「发布者显示名称」，由 CI 用 __PUBLISHER_DISPLAY_NAME__ 代入 -->
+    <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
     <Logo>assets\StoreLogo.png</Logo>
   </Properties>
   <Resources>

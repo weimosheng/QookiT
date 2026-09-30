@@ -171,6 +171,11 @@ jobs:
       - name: 生成 MSIX 包（侧载签名包 + 商店上传包）
         if: runner.os == 'Windows'
         shell: pwsh
+        # 发布者显示名可能含中文，必须经环境变量传入（Windows 环境块是 UTF-16，不经过脚本文件编码），
+        # 直接写 ${{ secrets.* }} 插值会被写进临时脚本文件，受脚本编码影响变成乱码。
+        env:
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}
+          MSIX_STORE_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_STORE_PUBLISHER_DISPLAY_NAME }}
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $ErrorActionPreference = "Stop"
@@ -224,6 +229,20 @@ jobs:
           if ($storePkgName -notmatch '^[A-Za-z0-9.\-]{3,50}$' -or $storePkgName.EndsWith('.')) {
             throw "MSIX_STORE_PACKAGE_NAME 形状不对：应为 3-50 位字母/数字/点/连字符（形如 12345Publisher.QookiT）"
           }
+          # 合作伙伴中心的「发布者显示名称」：商店包必须与之逐字一致，否则上传时报
+          # 「应用清单中的 PublisherDisplayName 元素是 X，该值与发布者显示名称 Y 不匹配」
+          $sideloadDisplay = $env:MSIX_PUBLISHER_DISPLAY_NAME
+          if (-not $sideloadDisplay) { $sideloadDisplay = "QookiT" }
+          $storeDisplay = $env:MSIX_STORE_PUBLISHER_DISPLAY_NAME
+          if (-not $storeDisplay) {
+            $storeDisplay = $sideloadDisplay
+            Write-Host "::warning::未配置 MSIX_STORE_PUBLISHER_DISPLAY_NAME，商店包的 PublisherDisplayName 用回退值 —— 若不等于合作伙伴中心的「发布者显示名称」，上传会被拒绝"
+          }
+          foreach ($d in @($storeDisplay, $sideloadDisplay)) {
+            if ($d -ne $d.Trim()) { throw "发布者显示名首尾有空格，商店会判定为不匹配（检查 Secrets 是否多复制了空格/换行）" }
+            if ($d.Length -gt 256) { throw "发布者显示名超过 256 字符" }
+            if ($d -match '^CN=') { throw "发布者显示名不要带 CN= 前缀：它是显示名（如 嘿华科技），不是证书 Subject（CN=...）" }
+          }
           $sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin"
           $latest = (Get-ChildItem $sdkBin -Directory | Where-Object { $_.Name -match "^\d" } | Sort-Object Name -Descending | Select-Object -First 1).FullName
           $makeAppx = Join-Path $latest "x64\MakeAppx.exe"
@@ -233,19 +252,31 @@ jobs:
           # 同一份 staging 内容按不同身份/签名策略打包：
           #   sideload → 自签名，用于仓库直接分发
           #   store    → 不签名，上传合作伙伴中心后由商店重新签名
+          # 显示名可能含中文；同时做 XML 转义，避免 & < > 破坏清单结构
+          function ConvertTo-XmlText {
+            param([string]$Value)
+            return $Value.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
+          }
+
           function New-MsixPackage {
             param(
               [string]$PackageName,
               [string]$PublisherName,
+              [string]$PublisherDisplayName,
               [string]$OutFile,
               [string]$CertPath,
               [string]$CertPassword
             )
             $content = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
-            $content = $content -replace "__PACKAGE_NAME__", $PackageName
-            $content = $content -replace "__PUBLISHER__", $PublisherName
+            # 用 .Replace()（纯文本）而不是 -replace（正则）：值里可能出现 $ 等正则元字符
+            $content = $content.Replace("__PACKAGE_NAME__", $PackageName)
+            $content = $content.Replace("__PUBLISHER__", $PublisherName)
+            $content = $content.Replace("__PUBLISHER_DISPLAY_NAME__", (ConvertTo-XmlText $PublisherDisplayName))
             # 模板自带结尾的 .0，这里只代入三段版本号
-            $content = $content -replace "__VERSION__", $base
+            $content = $content.Replace("__VERSION__", $base)
+            foreach ($ph in @("__PACKAGE_NAME__", "__PUBLISHER__", "__PUBLISHER_DISPLAY_NAME__", "__VERSION__")) {
+              if ($content.Contains($ph)) { throw "AppxManifest 仍有未替换的占位符: $ph" }
+            }
             if (-not $content.Contains("Version=`"$msixVersion`"")) {
               throw "AppxManifest 版本号异常：期望 Version=`"$msixVersion`"，实际内容与预期不符"
             }
@@ -279,12 +310,12 @@ jobs:
             $signPass = "qookit-sign"
           }
           $msixFile = "artifacts\${env:PRODUCT_NAME}_${base}_x64.msix"
-          New-MsixPackage -PackageName $pkgName -PublisherName $publisher -OutFile $msixFile -CertPath $signCert -CertPassword $signPass
+          New-MsixPackage -PackageName $pkgName -PublisherName $publisher -PublisherDisplayName $sideloadDisplay -OutFile $msixFile -CertPath $signCert -CertPassword $signPass
           Write-Host "侧载签名包完成: $msixFile"
 
-          # 上架 Microsoft Store：包必须保持未签名（商店会重新签名），Publisher 用商店分配的身份
+          # 上架 Microsoft Store：包必须保持未签名（商店会重新签名），Publisher / PublisherDisplayName 用商店分配的身份
           $storeMsix = "artifacts\${env:PRODUCT_NAME}_${base}_x64_store.msix"
-          New-MsixPackage -PackageName $storePkgName -PublisherName $storePublisher -OutFile $storeMsix
+          New-MsixPackage -PackageName $storePkgName -PublisherName $storePublisher -PublisherDisplayName $storeDisplay -OutFile $storeMsix
           Write-Host "商店上传包完成: $storeMsix"
 
           # .msixupload 是合作伙伴中心推荐的上传格式（zip 内含 msix）
