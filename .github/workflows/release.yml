@@ -179,8 +179,11 @@ jobs:
           if ($base -notmatch '^\d+\.\d+\.\d+$') {
             throw "MSIX 需要 x.y.z 形式的三段版本号，当前 tag 版本为 $version"
           }
+          # AppxManifest 模板里写的是 Version="__VERSION__.0"（第四段固定为 0），
+          # 所以替换 __VERSION__ 时只能给三段版本号，否则会拼出 1.1.0.0.0 这种非法版本。
+          # $msixVersion 是清单里最终应出现的四段版本，仅用于日志与校验。
           $msixVersion = "$base.0"
-          Write-Host "MSIX 包版本: $msixVersion"
+          Write-Host "MSIX 清单版本: $msixVersion"
           $staging = "msix-staging"
           Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path "$staging\assets" | Out-Null
@@ -224,7 +227,11 @@ jobs:
             $content = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
             $content = $content -replace "__PACKAGE_NAME__", $PackageName
             $content = $content -replace "__PUBLISHER__", $PublisherName
-            $content = $content -replace "__VERSION__", $msixVersion
+            # 模板自带结尾的 .0，这里只代入三段版本号
+            $content = $content -replace "__VERSION__", $base
+            if (-not $content.Contains("Version=`"$msixVersion`"")) {
+              throw "AppxManifest 版本号异常：期望 Version=`"$msixVersion`"，实际内容与预期不符"
+            }
             # 不用 Set-Content -Encoding UTF8：Windows PowerShell 会写入 BOM
             [System.IO.File]::WriteAllText(
               (Join-Path $PWD "$staging\AppxManifest.xml"),
