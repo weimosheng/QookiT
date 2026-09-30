@@ -57,17 +57,39 @@ Tauri 自更新需要替换自身可执行文件，在打包运行时必然失�
 1. 在[合作伙伴中心](https://partner.microsoft.com/dashboard)保留应用名，取得**产品标识**：
    - `Package/Identity/Name`（形如 `12345Publisher.QookiT`）
    - `Package/Identity/Publisher`（形如 `CN=ABCDEF12-3456-7890-ABCD-EF1234567890`）
-2. 在 GitHub 仓库 → Settings → Variables 添加：
+2. 在 GitHub 仓库配好下面这些 **Variables** 与 **Secrets**（Settings → Secrets and variables → Actions）。
 
-| 变量 | 用途 | 示例 |
+**Variables（明文）**
+
+| 变量 | 用途 | 必填? | 未配置时的回退 |
+| --- | --- | --- | --- |
+| `MSIX_STORE_PACKAGE_NAME` | 商店上传包 Identity/Name（= 产品标识 `Package/Identity/Name`） | **上架必填** | 回退为 `MSIX_PACKAGE_NAME` → `QookiT` |
+| `MSIX_STORE_PUBLISHER` | 商店上传包 Identity/Publisher（= 产品标识 `Package/Identity/Publisher`） | **上架必填** | 回退为 `MSIX_PUBLISHER` → `CN=QookiT` |
+| `MSIX_PACKAGE_NAME` | 侧载包 Identity/Name | 可选 | `QookiT` |
+| `MSIX_PUBLISHER` | 侧载包 Publisher，需与签名证书 Subject 一致 | 可选 | `CN=QookiT` |
+
+**Secrets（加密）**
+
+| 密钥 | 用途 | 必填? |
 | --- | --- | --- |
-| `MSIX_STORE_PACKAGE_NAME` | 商店包 Identity/Name | `12345Publisher.QookiT` |
-| `MSIX_STORE_PUBLISHER` | 商店包 Identity/Publisher | `CN=ABCDEF12-...` |
-| `MSIX_PACKAGE_NAME` | 侧载包 Identity/Name（可省略） | `QookiT` |
-| `MSIX_PUBLISHER` | 侧载包 Publisher，需与自签名证书 Subject 一致 | `CN=QookiT` |
+| `TAURI_SIGNING_PRIVATE_KEY` | 应用内自更新签名（Tauri updater）；缺失会导致打不出 updater 产物 | **构建必填** |
+| `MSIX_CERT_PFX_B64` | 侧载 MSIX 的正式代码签名证书（`.pfx` 的 base64） | 可选，缺失则用自签名 |
+| `MSIX_CERT_PASSWORD` | 上面证书的密码 | 与上项配套 |
 
-> `MSIX_STORE_*` 未设置时会回退为侧载值。上传商店时 **Publisher 必须与商店分配的值完全一致**，
-> 否则 Partner Center 会直接拒绝（包身份不匹配），这是最常见的上传失败原因。
+> `MSIX_STORE_*` 未配置时，CI 会打出身份为 `QookiT` / `CN=QookiT` 的商店包 —— 这种包**不能上传**
+> （Publisher 必须与账号分配值完全一致，否则报「包发布者与账户不匹配」）。
+> **身份变量必须在构建之前配好**，配好后再重跑一次发布。
+
+命令行配置（值取自合作伙伴中心「产品标识」）：
+
+```bash
+gh variable set MSIX_STORE_PACKAGE_NAME --body "12345Publisher.QookiT"
+gh variable set MSIX_STORE_PUBLISHER    --body "CN=ABCDEF12-3456-7890-ABCD-EF1234567890"
+
+# 核对现状
+gh variable list
+gh secret list
+```
 
 3. 隐私政策 URL：把 `PRIVACY.md` 托管为公开 HTTPS 地址（如 GitHub Pages），填入商店提交页。
 
@@ -77,6 +99,13 @@ Tauri 自更新需要替换自身可执行文件，在打包运行时必然失�
 # 1. 同步三处版本号后打 tag（版本号必须为 x.y.z 三段数字；MSIX 内部会写成 x.y.z.0）
 pnpm bump patch
 git tag v1.1.0 && git push origin v1.1.0
+```
+
+若只是补了变量 / 改了 CI，不想重新打 tag，可以直接用既有 tag 重跑（取 main 上的 workflow）：
+
+```bash
+gh workflow run release.yml --ref main -f tag=v1.1.0 -f prerelease=false
+gh run list --limit 3
 ```
 
 2. 等待 `Release` workflow 产出资产，下载 `QookiT_<ver>_x64_store.msixupload`。
