@@ -40,8 +40,26 @@ function mochaTheme(background: string, cursorAccent: string): ITheme {
 const TERMINAL_THEME_DARK = mochaTheme("#0a0a0f", "#0a0a0f");
 const TERMINAL_THEME_LIGHT = mochaTheme("#1e1e2e", "#1e1e2e");
 
+/**
+ * 终端回滚缓冲，按 terminalId 保留，用于面板切换/重建后恢复输出。
+ *
+ * 这里必须有上限：远端退出的会话在卸载时也会写入缓冲，而它的 terminalId 以后不会再用到，
+ * 之前无上限地累积，长时间使用后会把每个历史终端的全文都留在内存里。
+ */
+const MAX_TERMINAL_BUFFERS = 16;
 const terminalBuffers = new Map<string, string>();
 const discardedTerminals = new Set<string>();
+
+/** 写入缓冲并按 LRU 淘汰：Map 的插入顺序即最近使用顺序。 */
+function rememberBuffer(terminalId: string, content: string): void {
+  terminalBuffers.delete(terminalId);
+  terminalBuffers.set(terminalId, content);
+  while (terminalBuffers.size > MAX_TERMINAL_BUFFERS) {
+    const oldest = terminalBuffers.keys().next();
+    if (oldest.done) break;
+    terminalBuffers.delete(oldest.value);
+  }
+}
 
 export function discardTerminalBuffer(terminalId: string): void {
   discardedTerminals.add(terminalId);
@@ -66,7 +84,7 @@ function saveBuffer(terminalId: string, term: Terminal): void {
   while (start < end && lines[start].trim() === "") start++;
   while (end > start && lines[end - 1].trim() === "") end--;
   if (start < end) {
-    terminalBuffers.set(terminalId, lines.slice(start, end).join("\r\n") + "\r\n");
+    rememberBuffer(terminalId, lines.slice(start, end).join("\r\n") + "\r\n");
   }
 }
 
@@ -121,6 +139,8 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     if (!containerRef.current) return;
 
     let disposed = false;
+    // 远端关闭（onExit）后缓冲无需保留，见 cleanup
+    let exited = false;
 
     const s = useSettingsStore.getState();
     const term = new Terminal({
@@ -166,6 +186,8 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     });
     const unlistenExit = listen<TerminalExitPayload>(TERMINAL_EXIT_EVENT, (event) => {
       if (event.payload.terminal_id === terminalId) {
+        // 远端已关闭：这个 terminalId 不会再被复用，缓冲没有恢复的机会，卸载时直接丢弃
+        exited = true;
         onExitRef.current?.();
       }
     });
@@ -183,7 +205,11 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
 
     return () => {
       disposed = true;
-      saveBuffer(terminalId, term);
+      if (exited) {
+        terminalBuffers.delete(terminalId);
+      } else {
+        saveBuffer(terminalId, term);
+      }
       dataDisposable.dispose();
       resizeDisposable.dispose();
       selectionDisposable.dispose();

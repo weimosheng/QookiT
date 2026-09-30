@@ -1,11 +1,18 @@
+import { useEffect } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { ConnectionCenter } from "./components/ConnectionCenter";
 import { DialogHost } from "./components/DialogHost";
 import { ConnectionWorkspace } from "./features/connection/ConnectionWorkspace";
 import { useConnectionsStore } from "./stores/connectionsStore";
+import { usePackagingStore } from "./stores/packagingStore";
 
 function App() {
   const { tabs, activeTabId } = useConnectionsStore();
+
+  // 判断是否为 Microsoft Store / MSIX 安装，决定是否提供自更新入口。
+  useEffect(() => {
+    void usePackagingStore.getState().init();
+  }, []);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">

@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod connection;
+pub mod host_key;
 pub mod sftp;
 pub mod terminal;
 

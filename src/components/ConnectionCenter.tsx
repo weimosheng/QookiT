@@ -5,11 +5,14 @@ import { HostEditModal } from "./HostEditModal";
 import { ConnectingModal } from "./ConnectingModal";
 import { Button } from "@heroui/react";
 import { pingService } from "../services/pingService";
+import { connectionService } from "../services/connectionService";
+import { dialogAlert, dialogConfirm } from "../lib/dialog";
 import {
   Plus,
   Server,
   Trash2,
   Pencil,
+  KeyRound,
   RefreshCw,
   Wifi,
   WifiOff,
@@ -108,6 +111,43 @@ export function ConnectionCenter() {
   const handleDelete = async (host: Host) => {
     if (confirm(`确认删除服务器 ${host.name}?`)) {
       await remove(host.id);
+    }
+  };
+
+  /**
+   * 清除该主机已记录的主机密钥。
+   *
+   * 密钥与本地记录不一致时连接会被拒绝；确认服务器确实更换了密钥后，
+   * 用这个入口删除旧记录，下次连接会重新信任并写入新密钥。
+   */
+  const handleForgetKey = async (host: Host) => {
+    try {
+      const fingerprints = await connectionService.knownHostFingerprints(
+        host.host,
+        host.port,
+      );
+      if (fingerprints.length === 0) {
+        await dialogAlert(
+          "无主机密钥记录",
+          `${host.host}:${host.port} 还没有已记录的主机密钥，首次连接时会自动记录。`,
+        );
+        return;
+      }
+      const ok = await dialogConfirm(
+        "清除主机密钥记录",
+        `将删除 ${host.host}:${host.port} 的已记录密钥：\n${fingerprints.join(
+          "\n",
+        )}\n\n下次连接会重新信任并记录服务器密钥，请仅在确认服务器确实更换了密钥时使用。`,
+        true,
+      );
+      if (!ok) return;
+      const removed = await connectionService.forgetHostKey(
+        host.host,
+        host.port,
+      );
+      await dialogAlert("已清除", `已删除 ${removed} 条主机密钥记录。`);
+    } catch (e) {
+      await dialogAlert("操作失败", String(e));
     }
   };
 
@@ -215,6 +255,13 @@ export function ConnectionCenter() {
                       title="编辑"
                     >
                       <Pencil size={14} />
+                    </button>
+                    <button
+                      className="rounded-md p-1.5 text-muted hover:bg-default-soft hover:text-foreground"
+                      onClick={() => void handleForgetKey(host)}
+                      title="清除主机密钥记录"
+                    >
+                      <KeyRound size={14} />
                     </button>
                     <button
                       className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger"

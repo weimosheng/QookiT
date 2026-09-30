@@ -35,7 +35,7 @@ export function TabBar({
   onSplitV,
   onTabDragStart,
 }: TabBarProps) {
-  const draggingTabId = useDragStore((s) => (s.drag ? s.drag.tabId : null));
+  const draggingTabId = useDragStore((s) => s.drag?.tabId ?? null);
   const [menu, setMenu] = useState<{ tabId: string; x: number; y: number } | null>(
     null,
   );

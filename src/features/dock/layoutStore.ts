@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { getTools } from "./toolRegistry";
-import type { DockRegion } from "./dockStore";
+import type { DockRegion, SideRegionId } from "./dockStore";
 
 export interface PaneBlueprint {
   type: "pane";
@@ -22,6 +22,8 @@ export interface LayoutTemplate {
   id: string;
   name: string;
   toolSides: Record<string, DockRegion>;
+  /** 活动栏图标顺序（旧模板 / 他人分享的模板可能没有，加载时会自动补齐） */
+  iconOrder?: Record<SideRegionId, string[]>;
   left: Blueprint | null;
   right: Blueprint | null;
   bottom: Blueprint | null;
@@ -47,6 +49,11 @@ export function createDefaultTemplate(): LayoutTemplate {
     id: "__default__",
     name: "默认布局",
     toolSides,
+    iconOrder: {
+      left: [...sideTools.left],
+      right: [...sideTools.right],
+      bottom: [...sideTools.bottom],
+    },
     left: make(sideTools.left),
     right: make(sideTools.right),
     bottom: make(sideTools.bottom),

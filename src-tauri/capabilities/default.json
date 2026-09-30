@@ -20,6 +20,11 @@
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "fs:allow-exists",
-    "updater:default"
+    "updater:default",
+    {
+      "comment": "商店版本「设置 → 关于」跳转 Microsoft Store 更新页面（opener:default 仅允许 http/https/mailto/tel）",
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "ms-windows-store://*" }]
+    }
   ]
 }

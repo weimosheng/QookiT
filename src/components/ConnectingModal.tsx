@@ -40,6 +40,8 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
   const onConnectRef = useRef(onConnect);
   onConnectRef.current = onConnect;
   const startedRef = useRef(false);
+  /** 本轮打开是否已经发起过连接：防止严格模式下把同一台主机连两次。 */
+  const connectStartedRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -47,6 +49,7 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
       setFinished(false);
       setHasError(false);
       startedRef.current = false;
+      connectStartedRef.current = false;
       return;
     }
 
@@ -54,6 +57,7 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
     startedRef.current = true;
 
     let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
 
     const setup = async () => {
       const unlisten = await listen<ConnectionLogPayload>(CONNECTION_LOG_EVENT, (event) => {
@@ -73,7 +77,17 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
           setFinished(true);
         }
       });
+      // listen 是异步的，resolve 之前 effect 可能已被清理（卸载、关闭，
+      // 或 React 严格模式下的“挂载 → 清理 → 再挂载”）。
+      // 这里只放弃这次监听（不留游离监听），连接改由重新执行的那轮 effect 发起；
+      // 千万不要连 onConnect 一起跳过，否则界面会永远停在「正在连接」。
+      if (cancelled) {
+        unlisten();
+        return;
+      }
       unlistenFn = unlisten;
+      if (connectStartedRef.current) return;
+      connectStartedRef.current = true;
       onConnectRef.current().catch(() => {
         setHasError(true);
         setFinished(true);
@@ -82,7 +96,10 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
     setup();
 
     return () => {
-      if (unlistenFn) unlistenFn();
+      cancelled = true;
+      unlistenFn?.();
+      // 复位，让下一轮 effect（严格模式的第二次执行）能重新搭监听
+      startedRef.current = false;
     };
   }, [isOpen, hostId]);
 

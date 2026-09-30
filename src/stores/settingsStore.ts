@@ -10,6 +10,8 @@ export interface SettingsValues {
   editorFontSize: number;
   editorTabSize: number;
   editorWordWrap: boolean;
+  /** 编辑器可打开的文件大小上限（MB），超过则拒绝打开以避免界面卡死 */
+  editorMaxFileSizeMb: number;
   defaultPort: number;
   defaultUsername: string;
   hiddenTools: string[];
@@ -28,6 +30,7 @@ const DEFAULTS: SettingsValues = {
   editorFontSize: 13,
   editorTabSize: 2,
   editorWordWrap: false,
+  editorMaxFileSizeMb: 4,
   defaultPort: 22,
   defaultUsername: "root",
   hiddenTools: [],

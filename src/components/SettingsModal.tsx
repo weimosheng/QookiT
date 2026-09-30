@@ -5,6 +5,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { check } from "@tauri-apps/plugin-updater";
 import { useThemeStore } from "../stores/themeStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { usePackagingStore } from "../stores/packagingStore";
+import { appService } from "../services/appService";
 import { dialogConfirm } from "../lib/dialog";
 import { getTools } from "../features/dock/toolRegistry";
 import {
@@ -39,14 +41,58 @@ type Category = "appearance" | "terminal" | "editor" | "connection" | "layout" |
 export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
   const { dark, toggle } = useThemeStore();
   const settings = useSettingsStore();
+  const storeManaged = usePackagingStore((s) => s.storeManaged);
   const [category, setCategory] = useState<Category>("appearance");
   const [updateState, setUpdateState] = useState<
     "idle" | "checking" | "upToDate" | "downloading" | "error"
   >("idle");
   const [updateMsg, setUpdateMsg] = useState("");
+  // 商店版本：走 Microsoft Store 官方更新通道（StoreContext）
+  const [storeState, setStoreState] = useState<
+    "idle" | "checking" | "installing" | "upToDate" | "error"
+  >("idle");
+  const [storeMsg, setStoreMsg] = useState("");
   const state = useOverlayState({ isOpen, onOpenChange });
 
+  const handleStoreUpdate = async () => {
+    setStoreState("checking");
+    setStoreMsg("");
+    try {
+      const info = await appService.checkStoreUpdates();
+      if (!info.available) {
+        setStoreState("upToDate");
+        setStoreMsg("已是最新版本");
+        return;
+      }
+      const ok = await dialogConfirm(
+        "发现新版本",
+        "Microsoft Store 上有可用更新，是否立即下载并安装？安装完成后需要重启应用。",
+        true,
+      );
+      if (!ok) {
+        setStoreState("idle");
+        return;
+      }
+      setStoreState("installing");
+      setStoreMsg("正在通过 Microsoft Store 下载并安装...");
+      const result = await appService.installStoreUpdates();
+      if (result.state === "installed" || result.state === "upToDate") {
+        setStoreState("upToDate");
+      } else if (result.state === "canceled") {
+        setStoreState("idle");
+      } else {
+        setStoreState("error");
+      }
+      setStoreMsg(result.message);
+    } catch (e) {
+      setStoreState("error");
+      setStoreMsg(`${e}，可改用「商店更新页」手动更新`);
+    }
+  };
+
   const handleCheckUpdate = async () => {
+    // 商店版本不提供自更新（MSIX 安装目录只读），双保险避免误调用。
+    if (storeManaged) return;
     setUpdateState("checking");
     setUpdateMsg("");
     try {
@@ -235,6 +281,19 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
+                      <Row
+                        label="最大打开大小"
+                        hint="MB；超过此大小的文件不再打开，避免界面卡死"
+                      >
+                        <NumberInput
+                          value={settings.editorMaxFileSizeMb}
+                          min={1}
+                          max={256}
+                          onChange={(v) =>
+                            settings.update({ editorMaxFileSizeMb: v })
+                          }
+                        />
+                      </Row>
                     </Section>
                   )}
 
@@ -330,40 +389,97 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                         <span>GitHub 仓库</span>
                         <ExternalLink size={12} className="opacity-60" />
                       </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleCheckUpdate()}
-                          disabled={
-                            updateState === "checking" ||
-                            updateState === "downloading"
-                          }
-                          className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-default-soft disabled:opacity-50"
-                        >
-                          {updateState === "checking" ||
-                          updateState === "downloading" ? (
-                            <RefreshCw size={15} className="animate-spin" />
-                          ) : updateState === "error" ? (
-                            <AlertTriangle size={15} className="text-danger" />
-                          ) : updateState === "upToDate" ? (
-                            <Check size={15} className="text-accent" />
-                          ) : (
-                            <Download size={15} />
-                          )}
-                          <span>检查更新</span>
-                        </button>
-                        {updateMsg && (
-                          <span
-                            className={`text-xs ${
-                              updateState === "error"
-                                ? "text-danger"
-                                : "text-muted"
-                            }`}
-                          >
-                            {updateMsg}
+                      {storeManaged ? (
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleStoreUpdate()}
+                              disabled={
+                                storeState === "checking" ||
+                                storeState === "installing"
+                              }
+                              className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-default-soft disabled:opacity-50"
+                            >
+                              {storeState === "checking" ||
+                              storeState === "installing" ? (
+                                <RefreshCw size={15} className="animate-spin" />
+                              ) : storeState === "error" ? (
+                                <AlertTriangle
+                                  size={15}
+                                  className="text-danger"
+                                />
+                              ) : storeState === "upToDate" ? (
+                                <Check size={15} className="text-accent" />
+                              ) : (
+                                <Download size={15} />
+                              )}
+                              <span>检查更新</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void openUrl(
+                                  "ms-windows-store://downloadsandupdates",
+                                ).catch(() => {});
+                              }}
+                              className="flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-accent"
+                            >
+                              <ExternalLink size={12} />
+                              <span>商店更新页</span>
+                            </button>
+                            {storeMsg && (
+                              <span
+                                className={`text-xs ${
+                                  storeState === "error"
+                                    ? "text-danger"
+                                    : "text-muted"
+                                }`}
+                              >
+                                {storeMsg}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted">
+                            商店版本由 Microsoft Store 下载并安装更新，安装后需重启应用
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleCheckUpdate()}
+                            disabled={
+                              updateState === "checking" ||
+                              updateState === "downloading"
+                            }
+                            className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-default-soft disabled:opacity-50"
+                          >
+                            {updateState === "checking" ||
+                            updateState === "downloading" ? (
+                              <RefreshCw size={15} className="animate-spin" />
+                            ) : updateState === "error" ? (
+                              <AlertTriangle size={15} className="text-danger" />
+                            ) : updateState === "upToDate" ? (
+                              <Check size={15} className="text-accent" />
+                            ) : (
+                              <Download size={15} />
+                            )}
+                            <span>检查更新</span>
+                          </button>
+                          {updateMsg && (
+                            <span
+                              className={`text-xs ${
+                                updateState === "error"
+                                  ? "text-danger"
+                                  : "text-muted"
+                              }`}
+                            >
+                              {updateMsg}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="border-t border-border pt-3">
                         <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
                           技术栈

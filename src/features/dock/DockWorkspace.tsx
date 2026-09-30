@@ -50,11 +50,24 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
   const dropOnEdge = useDockStore((s) => s.dropOnEdge);
   const moveTabToRegion = useDockStore((s) => s.moveTabToRegion);
   const dropOnTab = useDockStore((s) => s.dropOnTab);
+  const reorderIcon = useDockStore((s) => s.reorderIcon);
   const setRegionSize = useDockStore((s) => s.setRegionSize);
+  const openTab = useDockStore((s) => s.openTab);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const dropTargetRef = useRef<DropTarget | null>(null);
+
+  /** 在指定区域打开一个尚未打开的工具（拖活动栏图标时使用）。 */
+  const openTool = useCallback(
+    (cid: string, toolTypeId: string, region: DockRegion, iconAnchor?: string) => {
+      void openTab(cid, toolTypeId, region, undefined, iconAnchor).catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        void dialogAlert("打开面板失败", msg || "未知错误");
+      });
+    },
+    [openTab],
+  );
 
   useEffect(() => {
     void ensureInit(connectionId);
@@ -77,6 +90,15 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       if (tabTarget) {
         dropTargetRef.current = tabTarget;
         setDropTarget(tabTarget);
+        return;
+      }
+
+      // 关闭状态的侧区域不渲染容器（见下方条件渲染），measureTargets 采不到它的矩形，
+      // 拖过去只会落回中心区域；这里用边缘感应带补上落点。
+      const closedTarget = hitClosedRegion(e, container, dock, cr);
+      if (closedTarget) {
+        dropTargetRef.current = closedTarget;
+        setDropTarget(closedTarget);
         return;
       }
 
@@ -105,8 +127,12 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
         let insertY = 0;
         let btnW = 0;
         let btnX = 0;
+        // 插入锚点：把图标插到这个工具之前；为空则追加到末尾
+        let anchorToolId: string | undefined;
         if (buttons.length === 0) {
-          insertY = barRect.top + barRect.height / 2 - cr.top;
+          // 空图标栏：实际会插到第 1 个位置，指示条就画在顶部（与结果一致），
+          // 之前画在轨道正中间，看起来像"插到中间"，与落点结果不符。
+          insertY = barRect.top - cr.top;
           btnW = 28;
           btnX = barRect.left - cr.left + (barRect.width - 28) / 2;
         } else {
@@ -114,7 +140,10 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
           for (let i = 0; i < buttons.length; i++) {
             const br = buttons[i].getBoundingClientRect();
             if (e.clientY < br.top + br.height / 2) {
-              insertY = br.top - cr.top - 2;
+              anchorToolId = buttons[i].getAttribute("data-tool-id") ?? undefined;
+              // 插到第 1 个：指示条画在轨道顶部，与「空图标栏」的表现一致，
+              // 否则它落在图标栏的 padding 里，看起来像没对齐。
+              insertY = i === 0 ? barRect.top - cr.top : br.top - cr.top - 2;
               btnW = br.width;
               btnX = br.left - cr.left;
               found = true;
@@ -122,6 +151,7 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
             }
           }
           if (!found) {
+            // 指针在最后一个图标之下：闱入末尾，指示条也画在图标列表下方
             const last = buttons[buttons.length - 1].getBoundingClientRect();
             insertY = last.bottom - cr.top + 2;
             btnW = last.width;
@@ -131,6 +161,7 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
         const t: DropTarget = {
           kind: "activityBar",
           region: sideAttr,
+          anchorToolId,
           rect: { x: btnX, y: insertY, w: btnW, h: 2 },
         };
         dropTargetRef.current = t;
@@ -162,7 +193,14 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       e.preventDefault();
       const t = dropTargetRef.current;
       if (drag && t) {
-        applyDrop(connectionId, drag, t, { moveTabToPane, dropOnEdge, moveTabToRegion, dropOnTab });
+        applyDrop(connectionId, drag, t, {
+          openTool,
+          moveTabToPane,
+          dropOnEdge,
+          moveTabToRegion,
+          reorderIcon,
+          dropOnTab,
+        });
       }
       dropTargetRef.current = null;
       setDropTarget(null);
@@ -181,7 +219,7 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       document.removeEventListener("drop", onDrop, true);
       document.removeEventListener("dragend", onDragEnd, true);
     };
-  }, [drag, connectionId, clearDrag, moveTabToPane, dropOnEdge, moveTabToRegion, dropOnTab]);
+  }, [drag, dock, connectionId, clearDrag, openTool, moveTabToPane, dropOnEdge, moveTabToRegion, reorderIcon, dropOnTab]);
 
   if (!dock) {
     return <div className="h-full w-full" />;
@@ -257,7 +295,11 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
       )}
       <SideActivityBar side="right" connectionId={connectionId} />
       {drag && dropTarget && (() => {
-        const r = overlayRect(dropTarget);
+        // 拖活动栏图标时落点是「整个区域」，画整块面板比画半边更贴近实际结果
+        const r =
+          drag.toolTypeId && dropTarget.kind === "pane"
+            ? dropTarget.rect
+            : overlayRect(dropTarget);
         if (dropTarget.kind === "tabStrip") {
           return (
             <div
@@ -412,6 +454,29 @@ function EmptyCenter({ connectionId }: { connectionId: string }) {
   );
 }
 
+/**
+ * 按 iconOrder 排列活动栏图标。
+ *
+ * 不在顺序表里的条目（新注册的工具、旧模板/旧数据）按原注册顺序补在末尾，
+ * 因此即使顺序表缺项，图标也不会消失。
+ */
+function orderByIconOrder<T extends { id: string }>(items: T[], order?: string[]): T[] {
+  if (!order || order.length === 0) return items;
+  const remaining = new Map(items.map((t) => [t.id, t]));
+  const ordered: T[] = [];
+  for (const id of order) {
+    const item = remaining.get(id);
+    if (item) {
+      ordered.push(item);
+      remaining.delete(id);
+    }
+  }
+  for (const item of items) {
+    if (remaining.has(item.id)) ordered.push(item);
+  }
+  return ordered;
+}
+
 function SideActivityBar({
   side,
   connectionId,
@@ -427,10 +492,13 @@ function SideActivityBar({
   const tools = getTools();
   const toolSides = dock?.toolSides ?? {};
   const hiddenTools = useSettingsStore((s) => s.hiddenTools);
-  const sideTools = tools.filter(
-    (t) =>
-      (toolSides[t.id] ?? t.defaultSide) === side &&
-      !hiddenTools.includes(t.id),
+  const sideTools = orderByIconOrder(
+    tools.filter(
+      (t) =>
+        (toolSides[t.id] ?? t.defaultSide) === side &&
+        !hiddenTools.includes(t.id),
+    ),
+    dock?.iconOrder?.[side],
   );
   const tree = dock?.[side] ?? null;
   const tabs = dock?.tabs ?? {};
@@ -460,20 +528,32 @@ function SideActivityBar({
             key={tool.id}
             type="button"
             data-activity-button
-            draggable={!!existingTabId}
+            data-tool-id={tool.id}
+            draggable
             onDragStart={(e) => {
-              if (!existingTabId || !tree) return;
-              e.dataTransfer.setData("text/plain", existingTabId);
               e.dataTransfer.effectAllowed = "move";
-              const paneId = findPaneWithTab(tree, existingTabId);
-              if (paneId) {
+              const paneId =
+                existingTabId && tree
+                  ? findPaneWithTab(tree, existingTabId)
+                  : null;
+              if (existingTabId && paneId) {
+                // 该工具已打开：拖动的是现有标签，可以移到其他面板/区域
+                e.dataTransfer.setData("text/plain", existingTabId);
                 useDragStore.getState().start({
                   connectionId,
                   tabId: existingTabId,
                   sourceRegion: side,
                   sourcePaneId: paneId,
                 });
+                return;
               }
+              // 该工具尚未打开：拖动的是「新面板」，落点决定它开在哪个区域
+              e.dataTransfer.setData("text/plain", tool.id);
+              useDragStore.getState().start({
+                connectionId,
+                sourceRegion: side,
+                toolTypeId: tool.id,
+              });
             }}
             onClick={() => {
               if (isActive && activeTabId) {
@@ -937,7 +1017,7 @@ function renderFramework(
 type DropTarget =
   | { kind: "pane"; paneId: string; region: DockRegion; zone: DropZone; rect: Rect }
   | { kind: "region"; region: DockRegion; rect: Rect }
-  | { kind: "activityBar"; region: SideRegionId; rect: Rect }
+  | { kind: "activityBar"; region: SideRegionId; rect: Rect; anchorToolId?: string }
   | { kind: "tabStrip"; paneId: string; region: DockRegion; index: number; rect: Rect };
 
 function hitTabStrip(
@@ -986,6 +1066,83 @@ function hitTabStrip(
 }
 
 const SIDE_REGIONS: SideRegionId[] = ["left", "right", "bottom"];
+
+/** 关闭状态下侧区域的边缘感应带（像素）。 */
+const CLOSED_EDGE_BAND = 72;
+const CLOSED_BOTTOM_BAND = 56;
+
+/**
+ * 侧区域关闭时的边缘落点。
+ *
+ * 关闭的侧区域**不会渲染** `[data-dock-region]` 容器（见下方 `dock.left && …` 的条件渲染），
+ * 于是 `measureTargets` 采不到它的矩形，拖拽时只有精确拖到 40px 活动栏上才能命中。
+ * 这里补一条沿边缘的感应带，让「把标签拖到左侧/右侧/底部」在面板未打开时也能生效：
+ * 拖上去即把标签停靠到该侧并自动展开面板。
+ */
+function hitClosedRegion(
+  e: DragEvent,
+  container: HTMLElement,
+  dock:
+    | {
+        left: LayoutNode | null;
+        right: LayoutNode | null;
+        bottom: LayoutNode | null;
+      }
+    | undefined,
+  cr: DOMRect,
+): DropTarget | null {
+  if (!dock) return null;
+  if (dock.left && dock.right && dock.bottom) return null;
+
+  const bars = Array.from(
+    container.querySelectorAll<HTMLElement>("[data-activity-bar]"),
+  );
+  const railEdge = (side: string, fallback: number): number => {
+    const el = bars.find((b) => b.getAttribute("data-activity-bar") === side);
+    if (!el) return fallback;
+    const r = el.getBoundingClientRect();
+    return (side === "left" ? r.right : r.left) - cr.left;
+  };
+  const leftEdge = railEdge("left", 0);
+  const rightEdge = railEdge("right", cr.width);
+  const centerWidth = Math.max(0, rightEdge - leftEdge);
+  if (centerWidth <= 0) return null;
+
+  const x = e.clientX - cr.left;
+  const y = e.clientY - cr.top;
+
+  if (!dock.left) {
+    const w = Math.min(CLOSED_EDGE_BAND, centerWidth);
+    if (x >= leftEdge && x <= leftEdge + w) {
+      return {
+        kind: "region",
+        region: "left",
+        rect: { x: leftEdge, y: 0, w, h: cr.height },
+      };
+    }
+  }
+  if (!dock.right) {
+    const w = Math.min(CLOSED_EDGE_BAND, centerWidth);
+    if (x <= rightEdge && x >= rightEdge - w) {
+      return {
+        kind: "region",
+        region: "right",
+        rect: { x: rightEdge - w, y: 0, w, h: cr.height },
+      };
+    }
+  }
+  if (!dock.bottom) {
+    const h = Math.min(CLOSED_BOTTOM_BAND, cr.height);
+    if (y >= cr.height - h) {
+      return {
+        kind: "region",
+        region: "bottom",
+        rect: { x: leftEdge, y: cr.height - h, w: centerWidth, h },
+      };
+    }
+  }
+  return null;
+}
 
 function measureTargets(container: HTMLElement): {
   panes: Record<string, Rect>;
@@ -1042,6 +1199,20 @@ function overlayRect(t: DropTarget): Rect {
 }
 
 interface DropOps {
+  /** 在目标区域打开一个尚未打开的工具（拖活动栏图标时使用）。 */
+  openTool: (
+    connectionId: string,
+    toolTypeId: string,
+    region: DockRegion,
+    iconAnchor?: string,
+  ) => void;
+  /** 只在活动栏内调整图标顺序（同一侧拖动时用，不移动面板）。 */
+  reorderIcon: (
+    connectionId: string,
+    tabId: string,
+    side: SideRegionId,
+    iconAnchor?: string,
+  ) => void;
   moveTabToPane: (
     connectionId: string,
     tabId: string,
@@ -1064,6 +1235,7 @@ interface DropOps {
     tabId: string,
     fromRegion: DockRegion,
     toRegion: DockRegion,
+    iconAnchor?: string,
   ) => void;
   dropOnTab: (
     connectionId: string,
@@ -1082,13 +1254,28 @@ function applyDrop(
   target: DropTarget,
   ops: DropOps,
 ): void {
+  // 活动栏图标拖动：落点区域决定新面板开在哪一侧；落在图标栏上时按位置插入图标
+  if (drag.toolTypeId) {
+    ops.openTool(
+      connectionId,
+      drag.toolTypeId,
+      target.region,
+      target.kind === "activityBar" ? target.anchorToolId : undefined,
+    );
+    return;
+  }
+
+  const tabId = drag.tabId;
+  const sourcePaneId = drag.sourcePaneId;
+  if (!tabId || !sourcePaneId) return;
+
   if (target.kind === "tabStrip") {
     ops.dropOnTab(
       connectionId,
-      drag.tabId,
+      tabId,
       drag.sourceRegion,
       target.region,
-      drag.sourcePaneId,
+      sourcePaneId,
       target.paneId,
       target.index,
     );
@@ -1096,22 +1283,33 @@ function applyDrop(
   }
 
   if (target.kind === "activityBar") {
-    ops.moveTabToRegion(connectionId, drag.tabId, drag.sourceRegion, target.region);
+    if (target.region === drag.sourceRegion) {
+      // 同一侧内拖动：只调整图标顺序，面板不动
+      ops.reorderIcon(connectionId, tabId, target.region, target.anchorToolId);
+    } else {
+      ops.moveTabToRegion(
+        connectionId,
+        tabId,
+        drag.sourceRegion,
+        target.region,
+        target.anchorToolId,
+      );
+    }
     return;
   }
 
   if (target.kind === "region") {
-    ops.moveTabToRegion(connectionId, drag.tabId, drag.sourceRegion, target.region);
+    ops.moveTabToRegion(connectionId, tabId, drag.sourceRegion, target.region);
     return;
   }
 
   if (target.zone === "center") {
     ops.moveTabToPane(
       connectionId,
-      drag.tabId,
+      tabId,
       drag.sourceRegion,
       target.region,
-      drag.sourcePaneId,
+      sourcePaneId,
       target.paneId,
     );
     return;
@@ -1119,10 +1317,10 @@ function applyDrop(
 
   ops.dropOnEdge(
     connectionId,
-    drag.tabId,
+    tabId,
     drag.sourceRegion,
     target.region,
-    drag.sourcePaneId,
+    sourcePaneId,
     target.paneId,
     target.zone,
   );

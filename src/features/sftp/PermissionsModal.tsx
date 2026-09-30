@@ -37,6 +37,19 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * 把权限位渲染成 `-rwxr-xr-x` 形式的符号串。
+ *
+ * 之前这里用的是 `(mode >> 2) & 7` 之类的混合取位，会把“其他”的位当成“读取”显示，结果没有意义。
+ */
+function symbolicMode(mode: number, isDir: boolean): string {
+  const triple = (shift: number): string => {
+    const bits = (mode >> shift) & 0b111;
+    return `${bits & 0b100 ? "r" : "-"}${bits & 0b010 ? "w" : "-"}${bits & 0b001 ? "x" : "-"}`;
+  };
+  return `${isDir ? "d" : "-"}${triple(6)}${triple(3)}${triple(0)}`;
+}
+
 export function PermissionsModal({
   isOpen,
   onOpenChange,
@@ -179,9 +192,10 @@ export function PermissionsModal({
                     className="w-20 rounded border border-border bg-background px-2 py-1 text-sm outline-none focus:border-accent"
                   />
                   <span className="text-xs text-muted">
-                    r={((mode >> 2) & 7).toString(8)}
-                    {((mode >> 1) & 1) ? "w" : "-"}
-                    {(mode & 1) ? "x" : "-"}
+                    实际结果：
+                    <span className="ml-1 font-mono text-foreground">
+                      {symbolicMode(mode, entry.is_dir)}
+                    </span>
                   </span>
                 </div>
               </div>

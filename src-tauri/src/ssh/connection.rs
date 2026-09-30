@@ -12,6 +12,7 @@ use crate::error::{AppError, AppResult};
 use crate::events::{ConnectionLogPayload, EVENT_CONNECTION_LOG};
 use crate::hosts::AuthMethod;
 use crate::ssh::auth::{resolve_credential, AuthCredential};
+use crate::ssh::host_key::{self, HostKeyVerdict};
 use crate::ssh::sftp::SftpManager;
 use crate::ssh::terminal::TerminalChannel;
 
@@ -25,13 +26,80 @@ pub struct ExecResult {
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 
-struct ClientHandler;
+/// 客户端回调：负责主机密钥校验（TOFU）与握手阶段日志。
+struct ClientHandler {
+    app: AppHandle,
+    host_id: String,
+    host: String,
+    port: u16,
+}
+
+impl ClientHandler {
+    fn log(&self, step: &str, message: String, status: &str) {
+        let _ = self.app.emit(
+            EVENT_CONNECTION_LOG,
+            ConnectionLogPayload {
+                host_id: self.host_id.clone(),
+                step: step.to_string(),
+                message,
+                status: status.to_string(),
+            },
+        );
+    }
+}
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    async fn check_server_key(&mut self, _key: &PublicKey) -> Result<bool, Self::Error> {
-        Ok(true)
+    /// 主机密钥校验：首次连接记录并放行，已记录且一致则放行，不一致则拒绝。
+    async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
+        let algorithm = host_key::algorithm(key);
+        let fingerprint = host_key::fingerprint(key);
+        match host_key::check(&self.host, self.port, key) {
+            HostKeyVerdict::Trusted => {
+                self.log(
+                    "tcp",
+                    format!("已确认主机密钥 {algorithm} {fingerprint}"),
+                    "info",
+                );
+                Ok(true)
+            }
+            HostKeyVerdict::Unknown => {
+                match host_key::learn(&self.host, self.port, key) {
+                    Ok(path) => {
+                        self.log(
+                            "tcp",
+                            format!(
+                                "首次连接，已记录主机密钥 {algorithm} {fingerprint}（{}）",
+                                path.display()
+                            ),
+                            "info",
+                        );
+                    }
+                    Err(e) => {
+                        // 记录失败不阻断连接，但必须让用户知道本次信任没有被保存。
+                        self.log(
+                            "tcp",
+                            format!("无法记录主机密钥 {algorithm} {fingerprint}：{e}"),
+                            "info",
+                        );
+                    }
+                }
+                Ok(true)
+            }
+            HostKeyVerdict::Changed { line } => {
+                self.log(
+                    "tcp",
+                    format!(
+                        "主机密钥与本地记录不一致，已中止连接：服务器提供 {algorithm} {fingerprint}，\
+                         与 known_hosts 第 {line} 行不符。若确认服务器确实更换了密钥，\
+                         请在连接中心点击该主机的钥匙按钮清除记录后重试",
+                    ),
+                    "error",
+                );
+                Ok(false)
+            }
+        }
     }
 }
 
@@ -69,7 +137,12 @@ impl Connection {
         emit_log("resolve", &format!("主机 {}:{} 已解析", host, port), "success");
 
         let config = Arc::new(client::Config::default());
-        let handler = ClientHandler;
+        let handler = ClientHandler {
+            app: app.clone(),
+            host_id: host_id.to_string(),
+            host: host.to_string(),
+            port,
+        };
 
         emit_log("tcp", &format!("正在建立 TCP 连接 {}:{}...", host, port), "start");
         let mut handle: Handle<ClientHandler> = match tokio::time::timeout(

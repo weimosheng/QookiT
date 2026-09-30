@@ -131,13 +131,21 @@ jobs:
           echo "=== Windows 产物（不含 MSIX）==="
           ls -lh "$STAGING"
 
-      - name: 生成 MSIX 包
+      - name: 生成 MSIX 包（侧载签名包 + 商店上传包）
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $ErrorActionPreference = "Stop"
+          # MSIX 版本号必须是四段纯数字（x.y.z.0）；上架商店时第四段必须为 0
+          $base = $version -replace '[^0-9.].*$', ''
+          if ($base -notmatch '^\d+\.\d+\.\d+$') {
+            throw "MSIX 需要 x.y.z 形式的三段版本号，当前 tag 版本为 $version"
+          }
+          $msixVersion = "$base.0"
+          Write-Host "MSIX 包版本: $msixVersion"
           $staging = "msix-staging"
+          Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path "$staging\assets" | Out-Null
           $exe = "src-tauri\target\${{ matrix.rust_target }}\release\qookit.exe"
           if (-not (Test-Path $exe)) { Write-Host "exe 不存在，跳过 MSIX"; exit 0 }
@@ -149,42 +157,83 @@ jobs:
           Copy-Item "$icons\128x128@2x.png" "$staging\assets\Wide310x150Logo.png"
           Copy-Item "$icons\128x128@2x.png" "$staging\assets\Square310x310Logo.png"
           Copy-Item "$icons\128x128.png"    "$staging\assets\SplashScreen.png"
+          # 侧载/仓库直发包身份（自签名证书的 Subject 必须与 Publisher 一致）
           $pkgName = "${{ vars.MSIX_PACKAGE_NAME }}"
           $publisher = "${{ vars.MSIX_PUBLISHER }}"
           if (-not $pkgName)   { $pkgName = "QookiT" }
           if (-not $publisher) { $publisher = "CN=QookiT" }
-          $manifest = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
-          $manifest = $manifest -replace "__PACKAGE_NAME__", $pkgName
-          $manifest = $manifest -replace "__PUBLISHER__", $publisher
-          $manifest = $manifest -replace "__VERSION__", $version
-          Set-Content "$staging\AppxManifest.xml" $manifest -Encoding UTF8
+          # 商店包身份：必须与合作伙伴中心分配的值完全一致，否则上传会被拒绝
+          $storePkgName = "${{ vars.MSIX_STORE_PACKAGE_NAME }}"
+          $storePublisher = "${{ vars.MSIX_STORE_PUBLISHER }}"
+          if (-not $storePkgName)   { $storePkgName = $pkgName }
+          if (-not $storePublisher) { $storePublisher = $publisher }
           $sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin"
           $latest = (Get-ChildItem $sdkBin -Directory | Where-Object { $_.Name -match "^\d" } | Sort-Object Name -Descending | Select-Object -First 1).FullName
           $makeAppx = Join-Path $latest "x64\MakeAppx.exe"
           $signTool  = Join-Path $latest "x64\signtool.exe"
           Write-Host "使用 SDK 工具: $makeAppx"
+
+          # 同一份 staging 内容按不同身份/签名策略打包：
+          #   sideload → 自签名，用于仓库直接分发
+          #   store    → 不签名，上传合作伙伴中心后由商店重新签名
+          function New-MsixPackage {
+            param(
+              [string]$PackageName,
+              [string]$PublisherName,
+              [string]$OutFile,
+              [string]$CertPath,
+              [string]$CertPassword
+            )
+            $content = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
+            $content = $content -replace "__PACKAGE_NAME__", $PackageName
+            $content = $content -replace "__PUBLISHER__", $PublisherName
+            $content = $content -replace "__VERSION__", $msixVersion
+            # 不用 Set-Content -Encoding UTF8：Windows PowerShell 会写入 BOM
+            [System.IO.File]::WriteAllText(
+              (Join-Path $PWD "$staging\AppxManifest.xml"),
+              $content,
+              (New-Object System.Text.UTF8Encoding($false))
+            )
+            & $makeAppx pack /d $staging /p $OutFile /nv /o
+            if ($LASTEXITCODE -ne 0) { throw "MakeAppx 打包失败: $OutFile" }
+            if ($CertPath) {
+              & $signTool sign /fd SHA256 /f $CertPath /p $CertPassword $OutFile
+              if ($LASTEXITCODE -ne 0) { throw "signtool 签名失败: $OutFile" }
+            }
+          }
+
           $certPfxB64 = "${{ secrets.MSIX_CERT_PFX_B64 }}"
           $certPwd    = "${{ secrets.MSIX_CERT_PASSWORD }}"
           if ($certPfxB64) {
             [System.IO.File]::WriteAllBytes("$PWD\sign-cert.pfx", [System.Convert]::FromBase64String($certPfxB64))
             $signCert = "sign-cert.pfx"
             $signPass = $certPwd
-            Write-Host "使用正式代码签名证书（可上 Microsoft Store）"
+            Write-Host "使用正式代码签名证书（侧载包）"
           } else {
-            Write-Host "使用自签名证书（Subject 匹配 Publisher）；上传 Microsoft Store 后 Store 会重新签名，无需购买正式证书"
+            Write-Host "使用自签名证书（Subject 匹配 Publisher）：仅侧载包会签名，商店上传包保持未签名"
             $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $publisher -CertStoreLocation "Cert:\CurrentUser\My"
             $tmpPwd = ConvertTo-SecureString -String "qookit-sign" -Force -AsPlainText
             Export-PfxCertificate -Cert $cert -FilePath "sign-cert.pfx" -Password $tmpPwd
             $signCert = "sign-cert.pfx"
             $signPass = "qookit-sign"
           }
-          $msixFile = "artifacts\${env:PRODUCT_NAME}_${version}_x64.msix"
-          & $makeAppx pack /d $staging /p $msixFile /nv
-          if ($LASTEXITCODE -ne 0) { throw "MakeAppx 打包失败" }
-          & $signTool sign /fd SHA256 /f $signCert /p $signPass $msixFile
-          if ($LASTEXITCODE -ne 0) { throw "signtool 签名失败" }
+          $msixFile = "artifacts\${env:PRODUCT_NAME}_${base}_x64.msix"
+          New-MsixPackage -PackageName $pkgName -PublisherName $publisher -OutFile $msixFile -CertPath $signCert -CertPassword $signPass
+          Write-Host "侧载签名包完成: $msixFile"
+
+          # 上架 Microsoft Store：包必须保持未签名（商店会重新签名），Publisher 用商店分配的身份
+          $storeMsix = "artifacts\${env:PRODUCT_NAME}_${base}_x64_store.msix"
+          New-MsixPackage -PackageName $storePkgName -PublisherName $storePublisher -OutFile $storeMsix
+          Write-Host "商店上传包完成: $storeMsix"
+
+          # .msixupload 是合作伙伴中心推荐的上传格式（zip 内含 msix）
+          $uploadZip = "artifacts\store-upload.zip"
+          if (Test-Path $uploadZip) { Remove-Item $uploadZip -Force }
+          Compress-Archive -Path $storeMsix -DestinationPath $uploadZip -Force
+          Move-Item -Force $uploadZip "artifacts\${env:PRODUCT_NAME}_${base}_x64_store.msixupload"
+
           Write-Host "=== MSIX 生成完成 ==="
-          Get-Item $msixFile | Format-List FullName, Length
+          Get-ChildItem "artifacts\*.msix", "artifacts\*.msixupload" | Format-List FullName, Length
 
       - name: 收集产物 (macOS)
         if: runner.os == 'macOS'

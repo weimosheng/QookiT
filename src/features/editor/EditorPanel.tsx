@@ -74,7 +74,6 @@ const ENCODINGS: { value: string; label: string }[] = [
   { value: "utf-16le", label: "UTF-16LE" },
 ];
 
-const MAX_OPEN_BYTES = 4 * 1024 * 1024;
 const LARGE_FILE_BYTES = 1024 * 1024;
 
 function buildTabSize(n: number): Extension[] {
@@ -187,6 +186,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
   const dark = useThemeStore((s) => s.dark);
   const editorFontSize = useSettingsStore((s) => s.editorFontSize);
   const editorTabSize = useSettingsStore((s) => s.editorTabSize);
+  const editorMaxFileSizeMb = useSettingsStore((s) => s.editorMaxFileSizeMb);
   const darkRef = useRef(dark);
   darkRef.current = dark;
   const encodingRef = useRef(encoding);
@@ -297,6 +297,10 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
   const reload = useCallback(
     async (enc: string, isCancelled: () => boolean) => {
       if (isCancelled()) return;
+      // 上限从设置里现读，而不宜放进依赖：改设置会让 reload 换新身份，
+      // 进而触发加载 effect 重新拉取文件，把未保存的编辑冲掉。
+      const maxOpenBytes =
+        useSettingsStore.getState().editorMaxFileSizeMb * 1024 * 1024;
       viewRef.current?.destroy();
       viewRef.current = null;
       initialDocRef.current = null;
@@ -315,7 +319,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
       try {
         try {
           const info = await sftpService.stat(connectionId, path);
-          if (info.size > MAX_OPEN_BYTES) {
+          if (info.size > maxOpenBytes) {
             setStatus("too-large");
             return;
           }
@@ -346,7 +350,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
           if (!isCancelled()) setLoadProgress(null);
         }
         if (isCancelled()) return;
-        if (base64.length > MAX_OPEN_BYTES * 1.4) {
+        if (base64.length > maxOpenBytes * 1.4) {
           setStatus("too-large");
           return;
         }
@@ -751,7 +755,10 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
               <>
                 <FileWarning size={22} className="text-accent" />
                 <span>
-                  文件超过 4 MB，已取消打开以避免阻塞界面
+                  文件超过 {editorMaxFileSizeMb} MB，已取消打开以避免阻塞界面
+                </span>
+                <span className="text-xs text-muted">
+                  可在「设置 → 编辑器 → 最大打开大小」调整上限
                 </span>
               </>
             )}
