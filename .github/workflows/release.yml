@@ -207,8 +207,23 @@ jobs:
           # 商店包身份：必须与合作伙伴中心分配的值完全一致，否则上传会被拒绝
           $storePkgName = "${{ secrets.MSIX_STORE_PACKAGE_NAME }}"
           $storePublisher = "${{ secrets.MSIX_STORE_PUBLISHER }}"
-          if (-not $storePkgName)   { $storePkgName = $pkgName }
-          if (-not $storePublisher) { $storePublisher = $publisher }
+          if (-not $storePkgName) {
+            $storePkgName = $pkgName
+            Write-Host "::warning::未配置 MSIX_STORE_PACKAGE_NAME，商店包将使用回退身份 $storePkgName —— 该包不可上传合作伙伴中心"
+          }
+          if (-not $storePublisher) {
+            $storePublisher = $publisher
+            Write-Host "::warning::未配置 MSIX_STORE_PUBLISHER，商店包将使用回退身份 $storePublisher —— 该包不可上传合作伙伴中心"
+          }
+          # Secrets 只写不读（这里也读不到值），因此做形状校验：
+          # 把常见的「两个值写反」「漏了 CN= 前缀」在构建阶段就拦下来，而不是等上传被拒。
+          # 注意错误信息里不能带值本身，否则会被日志掩码成 ***，反而看不出问题。
+          if ($storePublisher -notmatch '^CN=.+') {
+            throw "MSIX_STORE_PUBLISHER 形状不对：应为 CN=<发布者ID>，当前不以 CN= 开头（检查是否与 MSIX_STORE_PACKAGE_NAME 写反了）"
+          }
+          if ($storePkgName -notmatch '^[A-Za-z0-9.\-]{3,50}$' -or $storePkgName.EndsWith('.')) {
+            throw "MSIX_STORE_PACKAGE_NAME 形状不对：应为 3-50 位字母/数字/点/连字符（形如 12345Publisher.QookiT）"
+          }
           $sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin"
           $latest = (Get-ChildItem $sdkBin -Directory | Where-Object { $_.Name -match "^\d" } | Sort-Object Name -Descending | Select-Object -First 1).FullName
           $makeAppx = Join-Path $latest "x64\MakeAppx.exe"
