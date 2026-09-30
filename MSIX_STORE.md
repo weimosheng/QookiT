@@ -57,37 +57,34 @@ Tauri 自更新需要替换自身可执行文件，在打包运行时必然失�
 1. 在[合作伙伴中心](https://partner.microsoft.com/dashboard)保留应用名，取得**产品标识**：
    - `Package/Identity/Name`（形如 `12345Publisher.QookiT`）
    - `Package/Identity/Publisher`（形如 `CN=ABCDEF12-3456-7890-ABCD-EF1234567890`）
-2. 在 GitHub 仓库配好下面这些 **Variables** 与 **Secrets**（Settings → Secrets and variables → Actions）。
+2. 在 GitHub 仓库配好下面这些 **Secrets**（Settings → Secrets and variables → Actions → Secrets）。
+   全部都用 Secrets 而不是 Variables：公开仓库的 Variables 值任何登录用户都能通过 API 读到，
+   而 `..._PUBLISHER` 里含你的 Partner Center 发布者 ID（`CN=GUID`），可反查到账号下的其它应用。
 
-**Variables（明文）**
-
-| 变量 | 用途 | 必填? | 未配置时的回退 |
+| 密钥 | 用途 | 必填? | 未配置时的回退 |
 | --- | --- | --- | --- |
 | `MSIX_STORE_PACKAGE_NAME` | 商店上传包 Identity/Name（= 产品标识 `Package/Identity/Name`） | **上架必填** | 回退为 `MSIX_PACKAGE_NAME` → `QookiT` |
 | `MSIX_STORE_PUBLISHER` | 商店上传包 Identity/Publisher（= 产品标识 `Package/Identity/Publisher`） | **上架必填** | 回退为 `MSIX_PUBLISHER` → `CN=QookiT` |
 | `MSIX_PACKAGE_NAME` | 侧载包 Identity/Name | 可选 | `QookiT` |
 | `MSIX_PUBLISHER` | 侧载包 Publisher，需与签名证书 Subject 一致 | 可选 | `CN=QookiT` |
-
-**Secrets（加密）**
-
-| 密钥 | 用途 | 必填? |
-| --- | --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | 应用内自更新签名（Tauri updater）；缺失会导致打不出 updater 产物 | **构建必填** |
+| `TAURI_SIGNING_PRIVATE_KEY` | 应用内自更新签名（Tauri updater）；缺失打不出 updater 产物 | **构建必填** |
 | `MSIX_CERT_PFX_B64` | 侧载 MSIX 的正式代码签名证书（`.pfx` 的 base64） | 可选，缺失则用自签名 |
 | `MSIX_CERT_PASSWORD` | 上面证书的密码 | 与上项配套 |
 
+> 身份值本身不算秘密（安装后的包清单里 `Get-AppxPackage QookiT` 就能看到），
+> 放 Secrets 只是为了**不主动公开**发布者 ID。
+>
 > `MSIX_STORE_*` 未配置时，CI 会打出身份为 `QookiT` / `CN=QookiT` 的商店包 —— 这种包**不能上传**
 > （Publisher 必须与账号分配值完全一致，否则报「包发布者与账户不匹配」）。
-> **身份变量必须在构建之前配好**，配好后再重跑一次发布。
+> **身份必须在构建之前配好**，配好后再重跑一次发布。
 
 命令行配置（值取自合作伙伴中心「产品标识」）：
 
 ```bash
-gh variable set MSIX_STORE_PACKAGE_NAME --body "12345Publisher.QookiT"
-gh variable set MSIX_STORE_PUBLISHER    --body "CN=ABCDEF12-3456-7890-ABCD-EF1234567890"
+gh secret set MSIX_STORE_PACKAGE_NAME --body "12345Publisher.QookiT"
+gh secret set MSIX_STORE_PUBLISHER    --body "CN=ABCDEF12-3456-7890-ABCD-EF1234567890"
 
 # 核对现状
-gh variable list
 gh secret list
 ```
 

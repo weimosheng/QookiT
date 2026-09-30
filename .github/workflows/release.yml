@@ -198,13 +198,15 @@ jobs:
           Copy-Item "$icons\128x128@2x.png" "$staging\assets\Square310x310Logo.png"
           Copy-Item "$icons\128x128.png"    "$staging\assets\SplashScreen.png"
           # 侧载/仓库直发包身份（自签名证书的 Subject 必须与 Publisher 一致）
-          $pkgName = "${{ vars.MSIX_PACKAGE_NAME }}"
-          $publisher = "${{ vars.MSIX_PUBLISHER }}"
+          # 放在 Secrets 而不是 Variables：公开仓库的 Variables 任何登录用户都能通过 API 读到，
+          # 而 Publisher 含 Partner Center 发布者 ID，可反查到账号下的其它应用
+          $pkgName = "${{ secrets.MSIX_PACKAGE_NAME }}"
+          $publisher = "${{ secrets.MSIX_PUBLISHER }}"
           if (-not $pkgName)   { $pkgName = "QookiT" }
           if (-not $publisher) { $publisher = "CN=QookiT" }
           # 商店包身份：必须与合作伙伴中心分配的值完全一致，否则上传会被拒绝
-          $storePkgName = "${{ vars.MSIX_STORE_PACKAGE_NAME }}"
-          $storePublisher = "${{ vars.MSIX_STORE_PUBLISHER }}"
+          $storePkgName = "${{ secrets.MSIX_STORE_PACKAGE_NAME }}"
+          $storePublisher = "${{ secrets.MSIX_STORE_PUBLISHER }}"
           if (-not $storePkgName)   { $storePkgName = $pkgName }
           if (-not $storePublisher) { $storePublisher = $publisher }
           $sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin"
