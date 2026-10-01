@@ -7,7 +7,7 @@ export type ShortcutGroup = "general" | "tools" | "connection";
 
 export interface ShortcutAction {
   id: string;
-  label: string;
+  labelKey: string;
   group: ShortcutGroup;
   run: () => void | Promise<void>;
 }
@@ -44,13 +44,13 @@ function cycleConnection(delta: number): void {
 export const shortcutActions: ShortcutAction[] = [
   {
     id: "toggleTheme",
-    label: "切换主题",
+    labelKey: "shortcut:toggle_theme",
     group: "general",
     run: () => useThemeStore.getState().toggle(),
   },
   {
     id: "newTerminal",
-    label: "新建终端",
+    labelKey: "shortcut:new_terminal",
     group: "tools",
     run: async () => {
       const connId = useConnectionsStore.getState().activeTabId;
@@ -60,49 +60,49 @@ export const shortcutActions: ShortcutAction[] = [
   },
   {
     id: "openFiles",
-    label: "文件管理器",
+    labelKey: "shortcut:open_files",
     group: "tools",
     run: () => openOrFocusTool("files"),
   },
   {
     id: "openSearch",
-    label: "搜索",
+    labelKey: "shortcut:open_search",
     group: "tools",
     run: () => openOrFocusTool("search"),
   },
   {
     id: "openCommands",
-    label: "命令面板",
+    labelKey: "shortcut:open_commands",
     group: "tools",
     run: () => openOrFocusTool("commands"),
   },
   {
     id: "openEditor",
-    label: "编辑器",
+    labelKey: "shortcut:open_editor",
     group: "tools",
     run: () => openOrFocusTool("editor"),
   },
   {
     id: "openTransfer",
-    label: "传输队列",
+    labelKey: "shortcut:open_transfer",
     group: "tools",
     run: () => openOrFocusTool("transfer"),
   },
   {
     id: "openPerformance",
-    label: "性能",
+    labelKey: "shortcut:open_performance",
     group: "tools",
     run: () => openOrFocusTool("performance"),
   },
   {
     id: "nextConnection",
-    label: "下一个连接",
+    labelKey: "shortcut:next_connection",
     group: "connection",
     run: () => cycleConnection(1),
   },
   {
     id: "prevConnection",
-    label: "上一个连接",
+    labelKey: "shortcut:prev_connection",
     group: "connection",
     run: () => cycleConnection(-1),
   },

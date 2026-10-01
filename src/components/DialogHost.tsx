@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Modal,
   Button,
@@ -10,6 +11,7 @@ import {
 import { useDialogStore } from "../stores/dialogStore";
 
 export function DialogHost() {
+  const { t } = useTranslation();
   const current = useDialogStore((s) => s.current);
   const close = useDialogStore((s) => s.close);
   const [promptValue, setPromptValue] = useState("");
@@ -18,8 +20,8 @@ export function DialogHost() {
   useEffect(() => {
     if (current?.type === "prompt") {
       setPromptValue(current.defaultValue ?? "");
-      const t = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(timer);
     }
   }, [current]);
 
@@ -47,7 +49,7 @@ export function DialogHost() {
     close(isPrompt ? null : false);
   };
 
-  const confirmLabel = isAlert ? "确定" : "确认";
+  const confirmLabel = isAlert ? t("ok") : t("confirm");
   const confirmVariant = current.danger ? "danger" : "primary";
 
   return (
@@ -69,7 +71,7 @@ export function DialogHost() {
                   value={promptValue}
                   onChange={(v) => setPromptValue(v)}
                 >
-                  <Label>输入</Label>
+                  <Label>{t("input", { ns: "dialog" })}</Label>
                   <Input ref={inputRef} />
                 </TextField>
               )}
@@ -77,7 +79,7 @@ export function DialogHost() {
             <Modal.Footer>
               {!isAlert && (
                 <Button variant="ghost" onPress={handleCancel}>
-                  取消
+                  {t("cancel")}
                 </Button>
               )}
               <Button variant={confirmVariant} onPress={handleConfirm}>

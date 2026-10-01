@@ -1,0 +1,13 @@
+{
+  "menu_copy": "复制",
+  "menu_paste": "粘贴",
+  "menu_select_all": "全选",
+  "menu_clear_selection": "清除选择",
+  "menu_clear_screen": "清屏",
+  "new_terminal": "新建终端",
+  "no_terminal": "无终端",
+  "create_terminal": "创建终端",
+  "create_failed": "创建终端失败",
+  "open_panel_failed": "打开面板失败",
+  "terminal_title": "终端 {{n}}"
+}

@@ -1,11 +1,13 @@
 import pkg from "../../package.json";
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal, Button, useOverlayState } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { check } from "@tauri-apps/plugin-updater";
 import { useThemeStore } from "../stores/themeStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { usePackagingStore } from "../stores/packagingStore";
+import { useLocaleStore } from "../stores/localeStore";
 import { appService } from "../services/appService";
 import { dialogConfirm } from "../lib/dialog";
 import { getTools } from "../features/dock/toolRegistry";
@@ -27,6 +29,7 @@ import {
   Check,
   AlertTriangle,
   Keyboard,
+  Languages,
 } from "lucide-react";
 import { shortcutActions, type ShortcutGroup } from "../lib/shortcutActions";
 import { DEFAULT_SHORTCUTS } from "../lib/shortcutDefaults";
@@ -41,12 +44,14 @@ interface SettingsModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type Category = "appearance" | "terminal" | "editor" | "connection" | "layout" | "shortcuts" | "about";
+type Category = "appearance" | "terminal" | "editor" | "connection" | "layout" | "shortcuts" | "language" | "about";
 
 export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
+  const { t } = useTranslation("settings");
   const { dark, toggle } = useThemeStore();
   const settings = useSettingsStore();
   const storeManaged = usePackagingStore((s) => s.storeManaged);
+  const { locale, mode, setLocale, setAuto } = useLocaleStore();
   const [category, setCategory] = useState<Category>("appearance");
   const [updateState, setUpdateState] = useState<
     "idle" | "checking" | "upToDate" | "downloading" | "error"
@@ -66,12 +71,12 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
       const info = await appService.checkStoreUpdates();
       if (!info.available) {
         setStoreState("upToDate");
-        setStoreMsg("已是最新版本");
+        setStoreMsg(t("up_to_date"));
         return;
       }
       const ok = await dialogConfirm(
-        "发现新版本",
-        "Microsoft Store 上有可用更新，是否立即下载并安装？安装完成后需要重启应用。",
+        t("new_version_found"),
+        t("store_new_version_msg"),
         true,
       );
       if (!ok) {
@@ -79,7 +84,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
         return;
       }
       setStoreState("installing");
-      setStoreMsg("正在通过 Microsoft Store 下载并安装...");
+      setStoreMsg(t("installing_via_store"));
       const result = await appService.installStoreUpdates();
       if (result.state === "installed" || result.state === "upToDate") {
         setStoreState("upToDate");
@@ -91,7 +96,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
       setStoreMsg(result.message);
     } catch (e) {
       setStoreState("error");
-      setStoreMsg(`${e}，可改用「商店更新页」手动更新`);
+      setStoreMsg(`${e}${t("store_update_error_suffix")}`);
     }
   };
 
@@ -104,12 +109,12 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
       const update = await check();
       if (!update) {
         setUpdateState("upToDate");
-        setUpdateMsg("已是最新版本");
+        setUpdateMsg(t("up_to_date"));
         return;
       }
       const ok = await dialogConfirm(
-        "发现新版本",
-        `新版本 v${update.version} 可用，是否下载并安装？`,
+        t("new_version_found"),
+        t("new_version_msg", { version: update.version }),
         true,
       );
       if (!ok) {
@@ -117,7 +122,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
         return;
       }
       setUpdateState("downloading");
-      setUpdateMsg("下载安装中...");
+      setUpdateMsg(t("downloading_installing"));
       let contentLength = 0;
       let downloaded = 0;
       await update.downloadAndInstall((event) => {
@@ -125,15 +130,15 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
         else if (event.event === "Progress")
           downloaded += event.data.chunkLength;
         else if (event.event === "Finished")
-          setUpdateMsg("安装完成，请重启应用");
+          setUpdateMsg(t("install_finished"));
         if (contentLength > 0) {
           setUpdateMsg(
-            `下载中 ${Math.round((downloaded / contentLength) * 100)}%`,
+            t("downloading_percent", { percent: Math.round((downloaded / contentLength) * 100) }),
           );
         }
       });
       setUpdateState("upToDate");
-      setUpdateMsg("更新已安装，请重启应用");
+      setUpdateMsg(t("update_installed"));
     } catch (e) {
       setUpdateState("error");
       setUpdateMsg(String(e));
@@ -141,13 +146,14 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
   };
 
   const categories: { id: Category; label: string; icon: ReactNode }[] = [
-    { id: "appearance", label: "外观", icon: <Palette size={15} /> },
-    { id: "terminal", label: "终端", icon: <TerminalSquare size={15} /> },
-    { id: "editor", label: "编辑器", icon: <Code2 size={15} /> },
-    { id: "connection", label: "连接", icon: <Plug size={15} /> },
-    { id: "layout", label: "布局", icon: <LayoutGrid size={15} /> },
-    { id: "shortcuts", label: "快捷键", icon: <Keyboard size={15} /> },
-    { id: "about", label: "关于", icon: <Info size={15} /> },
+    { id: "appearance", label: t("cat_appearance"), icon: <Palette size={15} /> },
+    { id: "terminal", label: t("cat_terminal"), icon: <TerminalSquare size={15} /> },
+    { id: "editor", label: t("cat_editor"), icon: <Code2 size={15} /> },
+    { id: "connection", label: t("cat_connection"), icon: <Plug size={15} /> },
+    { id: "layout", label: t("cat_layout"), icon: <LayoutGrid size={15} /> },
+    { id: "shortcuts", label: t("cat_shortcuts"), icon: <Keyboard size={15} /> },
+    { id: "language", label: t("cat_language"), icon: <Languages size={15} /> },
+    { id: "about", label: t("cat_about"), icon: <Info size={15} /> },
   ];
 
   return (
@@ -156,7 +162,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
         <Modal.Container size="lg">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>设置</Modal.Heading>
+              <Modal.Heading>{t("title")}</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
               <div className="flex min-h-[360px] gap-4">
@@ -179,13 +185,13 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
 
                 <div className="min-w-0 flex-1">
                   {category === "appearance" && (
-                    <Section title="外观">
-                      <Row label="主题模式">
+                    <Section title={t("cat_appearance")}>
+                      <Row label={t("theme_mode")}>
                         <div className="flex gap-2">
                           <ThemeButton
                             active={!dark}
                             icon={<Sun size={15} />}
-                            label="亮色"
+                            label={t("light")}
                             onClick={() => {
                               if (dark) toggle();
                             }}
@@ -193,7 +199,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           <ThemeButton
                             active={dark}
                             icon={<Moon size={15} />}
-                            label="暗色"
+                            label={t("dark")}
                             onClick={() => {
                               if (!dark) toggle();
                             }}
@@ -204,8 +210,8 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                   )}
 
                   {category === "terminal" && (
-                    <Section title="终端">
-                      <Row label="字体族" hint="等宽字体优先">
+                    <Section title={t("cat_terminal")}>
+                      <Row label={t("terminal_font")} hint={t("terminal_font_hint")}>
                         <TextInput
                           value={settings.terminalFontFamily}
                           onChange={(v) =>
@@ -213,7 +219,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="字号">
+                      <Row label={t("terminal_size")}>
                         <NumberInput
                           value={settings.terminalFontSize}
                           min={8}
@@ -223,7 +229,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="滚动行数" hint="保留的历史行数">
+                      <Row label={t("terminal_scrollback")} hint={t("terminal_scrollback_hint")}>
                         <NumberInput
                           value={settings.terminalScrollback}
                           min={100}
@@ -234,7 +240,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="初始列数">
+                      <Row label={t("terminal_cols")}>
                         <NumberInput
                           value={settings.terminalCols}
                           min={20}
@@ -244,7 +250,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="初始行数">
+                      <Row label={t("terminal_rows")}>
                         <NumberInput
                           value={settings.terminalRows}
                           min={5}
@@ -258,8 +264,8 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                   )}
 
                   {category === "editor" && (
-                    <Section title="编辑器">
-                      <Row label="字号">
+                    <Section title={t("cat_editor")}>
+                      <Row label={t("editor_size")}>
                         <NumberInput
                           value={settings.editorFontSize}
                           min={8}
@@ -269,7 +275,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="Tab 大小">
+                      <Row label={t("editor_tab_size")}>
                         <NumberInput
                           value={settings.editorTabSize}
                           min={1}
@@ -279,7 +285,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="默认自动换行" hint="打开文件时是否自动换行">
+                      <Row label={t("editor_wrap")} hint={t("editor_wrap_hint")}>
                         <Toggle
                           checked={settings.editorWordWrap}
                           onChange={(v) =>
@@ -288,8 +294,8 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                         />
                       </Row>
                       <Row
-                        label="最大打开大小"
-                        hint="MB；超过此大小的文件不再打开，避免界面卡死"
+                        label={t("editor_max_size")}
+                        hint={t("editor_max_size_hint")}
                       >
                         <NumberInput
                           value={settings.editorMaxFileSizeMb}
@@ -304,8 +310,8 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                   )}
 
                   {category === "connection" && (
-                    <Section title="连接">
-                      <Row label="默认端口">
+                    <Section title={t("cat_connection")}>
+                      <Row label={t("default_port")}>
                         <NumberInput
                           value={settings.defaultPort}
                           min={1}
@@ -315,7 +321,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           }
                         />
                       </Row>
-                      <Row label="默认用户名">
+                      <Row label={t("default_username")}>
                         <TextInput
                           value={settings.defaultUsername}
                           onChange={(v) =>
@@ -327,9 +333,9 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                   )}
 
                   {category === "layout" && (
-                    <Section title="小侧边栏图标">
+                    <Section title={t("layout_title")}>
                       <p className="py-2 text-xs text-muted">
-                        隐藏的图标不会显示在小侧边栏，但仍可通过其他方式打开。
+                        {t("layout_hint")}
                       </p>
                       {getTools()
                         .filter(
@@ -341,13 +347,13 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                             tool.id,
                           );
                           const sideLabel = {
-                            left: "左侧",
-                            right: "右侧",
-                            bottom: "底部",
-                            center: "中部",
+                            left: t("side_left"),
+                            right: t("side_right"),
+                            bottom: t("side_bottom"),
+                            center: t("side_center"),
                           }[tool.defaultSide ?? "center"];
                           return (
-                            <Row key={tool.id} label={tool.name} hint={sideLabel}>
+                            <Row key={tool.id} label={tool.nameKey ? t(tool.nameKey) : (tool.name ?? tool.id)} hint={sideLabel}>
                               <div className="flex items-center gap-2">
                                 {visible ? (
                                   <Eye size={14} className="text-muted" />
@@ -375,6 +381,31 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
 
                   {category === "shortcuts" && <ShortcutSection />}
 
+                  {category === "language" && (
+                    <Section title={t("cat_language")}>
+                      <div className="flex flex-col gap-2">
+                        <LanguageOption
+                          active={mode === "auto"}
+                          icon={<Languages size={15} />}
+                          label={t("language_auto")}
+                          onClick={() => setAuto()}
+                        />
+                        <LanguageOption
+                          active={mode === "manual" && locale === "zh"}
+                          icon={<span className="text-sm font-medium">中</span>}
+                          label={t("language_zh")}
+                          onClick={() => setLocale("zh")}
+                        />
+                        <LanguageOption
+                          active={mode === "manual" && locale === "en"}
+                          icon={<span className="text-sm font-medium">En</span>}
+                          label={t("language_en")}
+                          onClick={() => setLocale("en")}
+                        />
+                      </div>
+                    </Section>
+                  )}
+
                   {category === "about" && (
                     <div className="flex flex-col gap-4 py-2">
                       <div className="flex items-center gap-3">
@@ -386,7 +417,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                         </span>
                       </div>
                       <p className="text-sm text-muted">
-                        跨平台 SSH 客户端，集成终端、文件管理、代码编辑于一体。
+                        {t("about_desc")}
                       </p>
                       <button
                         type="button"
@@ -394,7 +425,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                         className="flex w-fit items-center gap-2 text-sm text-accent hover:underline"
                       >
                         <Link size={16} />
-                        <span>GitHub 仓库</span>
+                        <span>{t("github_repo")}</span>
                         <ExternalLink size={12} className="opacity-60" />
                       </button>
                       {storeManaged ? (
@@ -422,7 +453,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                               ) : (
                                 <Download size={15} />
                               )}
-                              <span>检查更新</span>
+                              <span>{t("check_update")}</span>
                             </button>
                             <button
                               type="button"
@@ -434,7 +465,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                               className="flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-accent"
                             >
                               <ExternalLink size={12} />
-                              <span>商店更新页</span>
+                              <span>{t("store_update_page")}</span>
                             </button>
                             {storeMsg && (
                               <span
@@ -449,7 +480,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                             )}
                           </div>
                           <span className="text-xs text-muted">
-                            商店版本由 Microsoft Store 下载并安装更新，安装后需重启应用
+                            {t("store_update_hint")}
                           </span>
                         </div>
                       ) : (
@@ -473,7 +504,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                             ) : (
                               <Download size={15} />
                             )}
-                            <span>检查更新</span>
+                            <span>{t("check_update")}</span>
                           </button>
                           {updateMsg && (
                             <span
@@ -490,7 +521,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                       )}
                       <div className="border-t border-border pt-3">
                         <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
-                          技术栈
+                          {t("tech_stack")}
                         </h4>
                         <div className="flex flex-wrap gap-1.5">
                           {[
@@ -512,8 +543,8 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                         </div>
                       </div>
                       <div className="border-t border-border pt-3 text-xs text-muted">
-                        <p>后端 Rust · russh · russh-sftp</p>
-                        <p>前端 Vite · Tailwind CSS v4</p>
+                        <p>{t("backend_stack")}</p>
+                        <p>{t("frontend_stack")}</p>
                       </div>
                     </div>
                   )}
@@ -522,7 +553,7 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
             </Modal.Body>
             <Modal.Footer>
               <Button variant="primary" onPress={() => onOpenChange(false)}>
-                完成
+                {t("done")}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>
@@ -584,6 +615,36 @@ function ThemeButton({
     >
       {icon}
       <span>{label}</span>
+    </button>
+  );
+}
+
+function LanguageOption({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+        active
+          ? "border-accent bg-accent-soft text-accent"
+          : "border-border text-foreground hover:bg-default-soft"
+      }`}
+    >
+      <span className="flex items-center gap-2 whitespace-nowrap">
+        {icon}
+        <span>{label}</span>
+      </span>
+      {active && <Check size={15} className="text-accent" />}
     </button>
   );
 }
@@ -661,6 +722,7 @@ function TextInput({
 }
 
 function ShortcutSection() {
+  const { t } = useTranslation("settings");
   const settings = useSettingsStore();
   const [conflict, setConflict] = useState<string | null>(null);
 
@@ -669,9 +731,9 @@ function ShortcutSection() {
       ([id, key]) => id !== actionId && key === combo && key !== "",
     );
     if (owner) {
-      const ownerLabel =
-        shortcutActions.find((a) => a.id === owner[0])?.label ?? owner[0];
-      setConflict(`「${formatCombo(combo)}」已绑定到「${ownerLabel}」`);
+      const ownerKey = shortcutActions.find((a) => a.id === owner[0])?.labelKey;
+      const ownerLabel = ownerKey ? t(ownerKey) : owner[0];
+      setConflict(t("shortcut_conflict", { combo: formatCombo(combo), owner: ownerLabel }));
       return;
     }
     setConflict(null);
@@ -693,21 +755,21 @@ function ShortcutSection() {
   };
 
   const groups: { id: ShortcutGroup; label: string }[] = [
-    { id: "general", label: "通用" },
-    { id: "tools", label: "工具" },
-    { id: "connection", label: "连接" },
+    { id: "general", label: t("shortcuts_group_general") },
+    { id: "tools", label: t("shortcuts_group_tools") },
+    { id: "connection", label: t("shortcuts_group_connection") },
   ];
 
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between py-2">
-        <h3 className="text-sm font-medium text-foreground">快捷键</h3>
+        <h3 className="text-sm font-medium text-foreground">{t("shortcuts_title")}</h3>
         <button
           type="button"
           onClick={handleResetAll}
           className="text-xs text-accent hover:underline"
         >
-          恢复默认
+          {t("shortcuts_reset")}
         </button>
       </div>
       {conflict && <p className="pb-2 text-xs text-danger">{conflict}</p>}
@@ -718,7 +780,7 @@ function ShortcutSection() {
             {shortcutActions
               .filter((a) => a.group === g.id)
               .map((a) => (
-                <Row key={a.id} label={a.label}>
+                <Row key={a.id} label={t(a.labelKey)}>
                   <ShortcutRecorder
                     value={settings.shortcuts[a.id] ?? ""}
                     onChange={(combo) => handleChange(a.id, combo)}

@@ -1,0 +1,13 @@
+{
+  "menu_copy": "Copy",
+  "menu_paste": "Paste",
+  "menu_select_all": "Select All",
+  "menu_clear_selection": "Clear Selection",
+  "menu_clear_screen": "Clear Screen",
+  "new_terminal": "New Terminal",
+  "no_terminal": "No terminal",
+  "create_terminal": "Create Terminal",
+  "create_failed": "Failed to create terminal",
+  "open_panel_failed": "Failed to open panel",
+  "terminal_title": "Terminal {{n}}"
+}

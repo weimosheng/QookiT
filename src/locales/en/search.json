@@ -1,0 +1,18 @@
+{
+  "placeholder": "Search content (Enter to search, Esc to clear)",
+  "case_sensitive": "Case sensitive",
+  "regex": "Regex",
+  "whole_word": "Whole word",
+  "search": "Search",
+  "clear": "Clear",
+  "file_filter": "File filter (e.g. *.ts)",
+  "search_path": "Search path",
+  "grep_error": "grep command error",
+  "stats": "Results · {{files}} files · {{matches}} matches",
+  "searching": "Searching...",
+  "empty_hint": "Type content and press Enter to search",
+  "empty_hint_sub": "Narrowing the search path can significantly speed up search",
+  "no_match": "No matches found",
+  "jump_hint": "{{path}} (double-click to jump to file tree)",
+  "jump_to_tree": "Jump to file tree"
+}

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { sftpService } from "../../services/sftpService";
 import { useNavigationStore } from "../../stores/navigationStore";
 import { useDockStore } from "../dock/dockStore";
@@ -193,6 +194,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
+  const { t } = useTranslation("search");
   const openTab = useDockStore((s) => s.openTab);
   const requestNavigate = useNavigationStore((s) => s.requestNavigate);
 
@@ -219,7 +221,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
       const res = await sftpService.exec(connectionId, cmd);
       if (gen !== searchGenRef.current) return;
       if (res.exit_code === 2) {
-        setError(res.stderr.trim() || "grep 命令出错");
+        setError(res.stderr.trim() || t("grep_error"));
         setResults([]);
         setTotalMatches(0);
         return;
@@ -286,7 +288,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
               if (e.key === "Enter" && canSearch) runSearch();
               if (e.key === "Escape") clearAll();
             }}
-            placeholder="搜索内容 (回车搜索, Esc 清除)"
+            placeholder={t("placeholder")}
             className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-sm outline-none focus:border-accent"
             disabled={searching}
           />
@@ -294,19 +296,19 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
             <ToggleBtn
               active={caseSensitive}
               onClick={() => setCaseSensitive((v) => !v)}
-              title="区分大小写"
+              title={t("case_sensitive")}
               label="Aa"
             />
             <ToggleBtn
               active={useRegex}
               onClick={() => setUseRegex((v) => !v)}
-              title="正则表达式"
+              title={t("regex")}
               label=".*"
             />
             <ToggleBtn
               active={wholeWord}
               onClick={() => setWholeWord((v) => !v)}
-              title="整词匹配"
+              title={t("whole_word")}
               label="W"
             />
           </div>
@@ -314,7 +316,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
             type="button"
             onClick={runSearch}
             disabled={!canSearch}
-            title="搜索"
+            title={t("search")}
             className={cn(
               "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
               canSearch
@@ -332,7 +334,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
             <button
               type="button"
               onClick={clearAll}
-              title="清除"
+              title={t("clear")}
               className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-default-soft hover:text-foreground"
             >
               <X size={13} />
@@ -347,7 +349,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && canSearch) runSearch();
             }}
-            placeholder="文件过滤 (如 *.ts)"
+            placeholder={t("file_filter")}
             className="w-32 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent"
             disabled={searching}
           />
@@ -358,7 +360,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && canSearch) runSearch();
             }}
-            placeholder="搜索路径"
+            placeholder={t("search_path")}
             className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs font-mono outline-none focus:border-accent"
             disabled={searching}
           />
@@ -375,7 +377,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
       {stats && !error && (
         <div className="flex items-center gap-2 border-b border-border/50 bg-default-soft/40 px-3 py-1 text-[11px] text-muted">
           <span>
-            结果 · {stats.files} 个文件 · {stats.matches} 处匹配
+            {t("stats", { files: stats.files, matches: stats.matches })}
           </span>
         </div>
       )}
@@ -384,21 +386,21 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
         {searching ? (
           <div className="flex h-full items-center justify-center gap-2 text-muted">
             <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">搜索中...</span>
+            <span className="text-sm">{t("searching")}</span>
           </div>
         ) : !results ? (
           <div className="flex h-full items-center justify-center p-4 text-center">
             <p className="text-sm text-muted">
-              输入内容并回车开始搜索
+              {t("empty_hint")}
               <br />
               <span className="text-[11px]">
-                缩小搜索路径可显著加速
+                {t("empty_hint_sub")}
               </span>
             </p>
           </div>
         ) : results.length === 0 ? (
           <div className="flex h-full items-center justify-center p-4">
-            <p className="text-sm text-muted">未找到匹配</p>
+            <p className="text-sm text-muted">{t("no_match")}</p>
           </div>
         ) : (
           <div className="py-1">
@@ -410,7 +412,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
                     className="group flex cursor-pointer items-center gap-1 px-2 py-1 hover:bg-accent-soft"
                     onClick={() => toggleCollapse(group.path)}
                     onDoubleClick={() => handleJump(group.path)}
-                    title={`${group.path} (双击跳转到文件树)`}
+                    title={t("jump_hint", { path: group.path })}
                   >
                     {isCollapsed ? (
                       <ChevronRight size={13} className="flex-shrink-0 text-muted" />
@@ -431,7 +433,7 @@ export function SearchPanel({ connectionId }: SearchPanelProps) {
                         handleJump(group.path);
                       }}
                       className="flex-shrink-0 rounded p-0.5 text-muted opacity-0 hover:text-accent group-hover:opacity-100"
-                      title="跳转到文件树"
+                      title={t("jump_to_tree")}
                     >
                       <Folder size={12} />
                     </button>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal, Button, useOverlayState } from "@heroui/react";
 import { sftpService } from "../../services/sftpService";
 import { dialogAlert } from "../../lib/dialog";
@@ -58,6 +59,8 @@ export function ArchiveModal({
   const [outputName, setOutputName] = useState("");
   const [applying, setApplying] = useState(false);
   const state = useOverlayState({ isOpen, onOpenChange });
+  const { t } = useTranslation("sftp");
+  const { t: tc } = useTranslation("common");
 
   useEffect(() => {
     if (isOpen && entry) {
@@ -88,13 +91,13 @@ export function ArchiveModal({
       const cmd = getCompressCommand(entry.path, outputPath, format);
       const result = await sftpService.exec(connectionId, cmd);
       if (result.exit_code !== 0) {
-        await dialogAlert("压缩失败", result.stderr || result.stdout);
+        await dialogAlert(t("archive_failed"), result.stderr || result.stdout);
         return;
       }
       onApplied?.();
       onOpenChange(false);
     } catch (e) {
-      await dialogAlert("压缩失败", String(e));
+      await dialogAlert(t("archive_failed"), String(e));
     } finally {
       setApplying(false);
     }
@@ -108,7 +111,7 @@ export function ArchiveModal({
         <Modal.Container size="sm">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>压缩</Modal.Heading>
+              <Modal.Heading>{t("archive_title")}</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
               <div className="flex flex-col gap-4 py-2">
@@ -116,13 +119,13 @@ export function ArchiveModal({
                   <span className="text-foreground">{entry.name}</span>
                   {entry.is_dir && (
                     <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent">
-                      文件夹
+                      {t("archive_folder")}
                     </span>
                   )}
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">格式</label>
+                  <label className="text-sm font-medium">{t("archive_format")}</label>
                   <div className="flex flex-wrap gap-2">
                     {FORMATS.map((f) => (
                       <button
@@ -142,7 +145,7 @@ export function ArchiveModal({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">输出文件名</label>
+                  <label className="text-sm font-medium">{t("archive_output")}</label>
                   <input
                     type="text"
                     value={outputName}
@@ -154,14 +157,14 @@ export function ArchiveModal({
             </Modal.Body>
             <Modal.Footer>
               <Button variant="ghost" onPress={() => onOpenChange(false)}>
-                取消
+                {tc("cancel")}
               </Button>
               <Button
                 variant="primary"
                 isDisabled={applying || !outputName.trim()}
                 onPress={() => void handleApply()}
               >
-                {applying ? "压缩中..." : "压缩"}
+                {applying ? t("archive_compressing") : t("archive_compress")}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

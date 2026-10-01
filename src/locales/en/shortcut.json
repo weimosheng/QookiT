@@ -1,0 +1,12 @@
+{
+  "toggle_theme": "Toggle theme",
+  "new_terminal": "New Terminal",
+  "open_files": "File Manager",
+  "open_search": "Search",
+  "open_commands": "Command Palette",
+  "open_editor": "Editor",
+  "open_transfer": "Transfer Queue",
+  "open_performance": "Performance",
+  "next_connection": "Next connection",
+  "prev_connection": "Previous connection"
+}

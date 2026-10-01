@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useHostsStore } from "../stores/hostsStore";
 import { useConnectionsStore } from "../stores/connectionsStore";
 import { HostEditModal } from "./HostEditModal";
@@ -17,6 +18,8 @@ import {
   Wifi,
   WifiOff,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { Host } from "../types/host";
 import { createEmptyHost } from "../types/host";
@@ -29,14 +32,8 @@ function latencyColor(ms: number): string {
   return "text-danger";
 }
 
-function latencyLabel(latency: Latency): string {
-  if (latency === null) return "未检测";
-  if (latency === "loading") return "检测中...";
-  if (latency === "error") return "不可达";
-  return `${latency} ms`;
-}
-
 export function ConnectionCenter() {
+  const { t } = useTranslation("connection");
   const { hosts, load, remove } = useHostsStore();
   const { connect, tabs } = useConnectionsStore();
   const [editing, setEditing] = useState<Host | null>(null);
@@ -44,6 +41,7 @@ export function ConnectionCenter() {
   const [connectingHost, setConnectingHost] = useState<Host | null>(null);
   const [connectingOpen, setConnectingOpen] = useState(false);
   const [latencies, setLatencies] = useState<Record<string, Latency>>({});
+  const [showAddress, setShowAddress] = useState(false);
 
   useEffect(() => {
     load();
@@ -109,9 +107,8 @@ export function ConnectionCenter() {
   };
 
   const handleDelete = async (host: Host) => {
-    if (confirm(`确认删除服务器 ${host.name}?`)) {
-      await remove(host.id);
-    }
+    const ok = await dialogConfirm(t("confirm_delete", { name: host.name }), undefined, true);
+    if (ok) await remove(host.id);
   };
 
   /**
@@ -128,16 +125,18 @@ export function ConnectionCenter() {
       );
       if (fingerprints.length === 0) {
         await dialogAlert(
-          "无主机密钥记录",
-          `${host.host}:${host.port} 还没有已记录的主机密钥，首次连接时会自动记录。`,
+          t("no_host_key"),
+          t("no_host_key_msg", { host: host.host, port: host.port }),
         );
         return;
       }
       const ok = await dialogConfirm(
-        "清除主机密钥记录",
-        `将删除 ${host.host}:${host.port} 的已记录密钥：\n${fingerprints.join(
-          "\n",
-        )}\n\n下次连接会重新信任并记录服务器密钥，请仅在确认服务器确实更换了密钥时使用。`,
+        t("clear_host_key_title"),
+        t("clear_host_key_msg", {
+          host: host.host,
+          port: host.port,
+          fingerprints: fingerprints.join("\n"),
+        }),
         true,
       );
       if (!ok) return;
@@ -145,29 +144,44 @@ export function ConnectionCenter() {
         host.host,
         host.port,
       );
-      await dialogAlert("已清除", `已删除 ${removed} 条主机密钥记录。`);
+      await dialogAlert(t("cleared"), t("cleared_msg", { count: removed }));
     } catch (e) {
-      await dialogAlert("操作失败", String(e));
+      await dialogAlert(t("operation_failed"), String(e));
     }
   };
 
   const isConnected = (hostId: string) => tabs.some((t) => t.hostId === hostId);
 
+  function latencyLabel(latency: Latency): string {
+    if (latency === null) return t("latency_untested");
+    if (latency === "loading") return t("latency_testing");
+    if (latency === "error") return t("latency_unreachable");
+    return `${latency} ms`;
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-base font-semibold text-foreground">连接中心</span>
-          <span className="text-sm text-muted">{hosts.length} 台服务器</span>
+          <span className="text-base font-semibold text-foreground">{t("center_title")}</span>
+          <span className="text-sm text-muted">{t("server_count", { count: hosts.length })}</span>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => setShowAddress((v) => !v)}
+          >
+            {showAddress ? <EyeOff size={14} className="mr-1" /> : <Eye size={14} className="mr-1" />}
+            {showAddress ? t("hide_address") : t("show_address")}
+          </Button>
           <Button size="sm" variant="ghost" onPress={pingAll} isDisabled={hosts.length === 0}>
             <RefreshCw size={14} className="mr-1" />
-            全部测速
+            {t("ping_all")}
           </Button>
           <Button size="sm" variant="primary" onPress={handleNew}>
             <Plus size={14} className="mr-1" />
-            添加服务器
+            {t("add_server")}
           </Button>
         </div>
       </div>
@@ -177,8 +191,8 @@ export function ConnectionCenter() {
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <Server size={48} className="mx-auto text-muted" />
-              <p className="mt-4 text-lg font-semibold text-foreground">还没有服务器</p>
-              <p className="mt-2 text-sm text-muted">点击右上角"添加服务器"开始</p>
+              <p className="mt-4 text-lg font-semibold text-foreground">{t("no_servers")}</p>
+              <p className="mt-2 text-sm text-muted">{t("no_servers_hint")}</p>
             </div>
           </div>
         ) : (
@@ -197,15 +211,17 @@ export function ConnectionCenter() {
                         <span className="truncate font-medium text-foreground">{host.name}</span>
                         {connected && (
                           <span className="rounded-full bg-success-soft px-1.5 py-0.5 text-xs text-success">
-                            已连接
+                            {t("connected")}
                           </span>
                         )}
                       </div>
                       <div className="mt-1 truncate text-xs text-muted">
-                        {host.username}@{host.host}:{host.port}
+                        {showAddress
+                          ? `${host.username}@${host.host}:${host.port}`
+                          : `${host.username}@•••:•••`}
                       </div>
                       <div className="mt-1 text-xs text-muted">
-                        {host.auth.type === "password" ? "密码认证" : "密钥认证"}
+                        {host.auth.type === "password" ? t("password_auth") : t("key_auth")}
                       </div>
                     </div>
                   </div>
@@ -240,33 +256,33 @@ export function ConnectionCenter() {
                       onPress={() => handleConnect(host)}
                       className="flex-1"
                     >
-                      连接
+                      {t("connect")}
                     </Button>
                     <button
                       className="rounded-md p-1.5 text-muted hover:bg-default-soft hover:text-foreground"
                       onClick={() => pingOne(host)}
-                      title="测速"
+                      title={t("ping")}
                     >
                       <RefreshCw size={14} />
                     </button>
                     <button
                       className="rounded-md p-1.5 text-muted hover:bg-default-soft hover:text-foreground"
                       onClick={() => handleEdit(host)}
-                      title="编辑"
+                      title={t("edit")}
                     >
                       <Pencil size={14} />
                     </button>
                     <button
                       className="rounded-md p-1.5 text-muted hover:bg-default-soft hover:text-foreground"
                       onClick={() => void handleForgetKey(host)}
-                      title="清除主机密钥记录"
+                      title={t("clear_host_key")}
                     >
                       <KeyRound size={14} />
                     </button>
                     <button
                       className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
                       onClick={() => handleDelete(host)}
-                      title="删除"
+                      title={t("delete")}
                     >
                       <Trash2 size={14} />
                     </button>

@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Cpu,
   MemoryStick,
@@ -17,6 +18,7 @@ import { performanceService } from "../../services/performanceService";
 import type { PerformanceSample } from "../../types/performance";
 import { PerformanceChart } from "./PerformanceChart";
 import { cn } from "../../lib/cn";
+import i18n from "../../lib/i18n";
 
 interface PerformancePanelProps {
   connectionId: string;
@@ -30,6 +32,7 @@ const INTERVAL_OPTIONS = [
 ];
 
 export function PerformancePanel({ connectionId }: PerformancePanelProps) {
+  const { t } = useTranslation("performance");
   const [sample, setSample] = useState<PerformanceSample | null>(null);
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [memHistory, setMemHistory] = useState<number[]>([]);
@@ -94,7 +97,7 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <AlertCircle size={32} className="text-danger" />
-        <p className="text-sm text-foreground">无法采集性能数据</p>
+        <p className="text-sm text-foreground">{t("cannot_collect")}</p>
         <p className="text-xs text-muted">{error}</p>
         <button
           type="button"
@@ -105,7 +108,7 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
           }}
           className="rounded-md border border-border bg-default-soft px-3 py-1 text-xs text-foreground hover:bg-accent-soft"
         >
-          重试
+          {t("retry")}
         </button>
       </div>
     );
@@ -116,7 +119,7 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
       <div className="flex items-center justify-between border-b border-border/50 bg-background/60 px-3 py-2 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Activity size={15} className="text-accent" />
-          <span className="text-xs font-medium text-foreground">性能监控</span>
+          <span className="text-xs font-medium text-foreground">{t("title")}</span>
           {sample && (
             <span className="text-xs text-muted">· {sample.hostname}</span>
           )}
@@ -141,7 +144,7 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
           </div>
           <button
             type="button"
-            title={paused ? "继续" : "暂停"}
+            title={paused ? t("resume") : t("pause")}
             onClick={() => setPaused((p) => !p)}
             className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-default-soft hover:text-foreground"
           >
@@ -149,7 +152,7 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
           </button>
           <button
             type="button"
-            title="立即刷新"
+            title={t("refresh_now")}
             onClick={() => fetchOnce(false)}
             className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-default-soft hover:text-foreground"
           >
@@ -220,18 +223,19 @@ function Stat({
 }
 
 function OverviewCard({ sample }: { sample: PerformanceSample }) {
+  const { t } = useTranslation("performance");
   return (
-    <Card icon={Server} title="系统概览">
+    <Card icon={Server} title={t("overview")}>
       <div className="grid grid-cols-3 gap-2">
-        <Stat label="主机名" value={sample.hostname} />
-        <Stat label="系统" value={sample.os} />
-        <Stat label="内核" value={sample.kernel} />
-        <Stat label="运行时长" value={formatUptime(sample.uptime_seconds)} />
+        <Stat label={t("hostname")} value={sample.hostname} />
+        <Stat label={t("os")} value={sample.os} />
+        <Stat label={t("kernel")} value={sample.kernel} />
+        <Stat label={t("uptime")} value={formatUptime(sample.uptime_seconds)} />
         <Stat
-          label="负载 (1/5/15)"
+          label={t("load")}
           value={sample.load_avg.map((v) => v.toFixed(2)).join(" / ")}
         />
-        <Stat label="进程数" value={String(sample.process_count)} />
+        <Stat label={t("processes")} value={String(sample.process_count)} />
       </div>
     </Card>
   );
@@ -244,15 +248,16 @@ function CpuCard({
   sample: PerformanceSample;
   history: number[];
 }) {
+  const { t } = useTranslation("performance");
   return (
-    <Card icon={Cpu} title="CPU">
+    <Card icon={Cpu} title={t("cpu")}>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="text-2xl font-bold text-accent">
           {sample.cpu_usage.toFixed(1)}
         </span>
         <span className="text-sm text-muted">%</span>
         <span className="ml-auto text-[10px] text-muted">
-          {sample.cpu_cores} 核 · {sample.cpu_model}
+          {t("cpu_cores", { cores: sample.cpu_cores, model: sample.cpu_model })}
         </span>
       </div>
       <PerformanceChart data={history} max={100} height={56} />
@@ -267,10 +272,11 @@ function MemoryCard({
   sample: PerformanceSample;
   history: number[];
 }) {
+  const { t } = useTranslation("performance");
   const pct =
     sample.mem_total > 0 ? (sample.mem_used / sample.mem_total) * 100 : 0;
   return (
-    <Card icon={MemoryStick} title="内存">
+    <Card icon={MemoryStick} title={t("memory")}>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="text-2xl font-bold text-accent">{pct.toFixed(1)}</span>
         <span className="text-sm text-muted">%</span>
@@ -280,12 +286,12 @@ function MemoryCard({
       </div>
       <PerformanceChart data={history} max={100} height={48} />
       <div className="mt-2 grid grid-cols-3 gap-2">
-        <Stat label="可用" value={formatBytes(sample.mem_available)} />
-        <Stat label="缓存" value={formatBytes(sample.mem_cached)} />
+        <Stat label={t("mem_available")} value={formatBytes(sample.mem_available)} />
+        <Stat label={t("mem_cached")} value={formatBytes(sample.mem_cached)} />
         <Stat
-          label="Swap"
+          label={t("mem_swap")}
           value={formatBytes(sample.swap_used)}
-          sub={sample.swap_total > 0 ? `/ ${formatBytes(sample.swap_total)}` : "无"}
+          sub={sample.swap_total > 0 ? `/ ${formatBytes(sample.swap_total)}` : t("no_swap")}
         />
       </div>
     </Card>
@@ -299,19 +305,19 @@ function LoadCard({
   sample: PerformanceSample;
   history: number[];
 }) {
+  const { t } = useTranslation("performance");
   const maxScale = Math.max(1, ...history, sample.load_avg[0] * 1.2);
   return (
-    <Card icon={Activity} title="系统负载">
+    <Card icon={Activity} title={t("load_title")}>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="text-2xl font-bold text-accent">
           {sample.load_avg[0].toFixed(2)}
         </span>
         <span className="text-xs text-muted">
-          5m {sample.load_avg[1].toFixed(2)} · 15m{" "}
-          {sample.load_avg[2].toFixed(2)}
+          {t("load_5m_15m", { v5: sample.load_avg[1].toFixed(2), v15: sample.load_avg[2].toFixed(2) })}
         </span>
         <span className="ml-auto text-[10px] text-muted">
-          归一化 {(sample.load_avg[0] / Math.max(1, sample.cpu_cores)).toFixed(2)}
+          {t("load_normalized", { value: (sample.load_avg[0] / Math.max(1, sample.cpu_cores)).toFixed(2) })}
         </span>
       </div>
       <PerformanceChart data={history} max={maxScale} height={48} />
@@ -320,15 +326,16 @@ function LoadCard({
 }
 
 function DiskCard({ sample }: { sample: PerformanceSample }) {
+  const { t } = useTranslation("performance");
   if (sample.disks.length === 0) {
     return (
-      <Card icon={HardDrive} title="磁盘">
-        <p className="text-xs text-muted">无磁盘信息</p>
+      <Card icon={HardDrive} title={t("disk")}>
+        <p className="text-xs text-muted">{t("no_disk")}</p>
       </Card>
     );
   }
   return (
-    <Card icon={HardDrive} title="磁盘">
+    <Card icon={HardDrive} title={t("disk")}>
       <div className="flex flex-col gap-2">
         {sample.disks.map((d) => {
           const pct = d.total > 0 ? (d.used / d.total) * 100 : 0;
@@ -352,15 +359,16 @@ function DiskCard({ sample }: { sample: PerformanceSample }) {
 }
 
 function NetworkCard({ sample }: { sample: PerformanceSample }) {
+  const { t } = useTranslation("performance");
   if (sample.net_interfaces.length === 0) {
     return (
-      <Card icon={Network} title="网络">
-        <p className="text-xs text-muted">无网络接口</p>
+      <Card icon={Network} title={t("network")}>
+        <p className="text-xs text-muted">{t("no_network")}</p>
       </Card>
     );
   }
   return (
-    <Card icon={Network} title="网络流量 (累计)">
+    <Card icon={Network} title={t("network_traffic")}>
       <div className="grid grid-cols-2 gap-2">
         {sample.net_interfaces.map((n) => (
           <div
@@ -411,11 +419,11 @@ function formatBytes(b: number): string {
 }
 
 function formatUptime(s: number): string {
-  if (s <= 0) return "未知";
+  if (s <= 0) return i18n.t("unknown", { ns: "performance" });
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d}天 ${h}小时`;
-  if (h > 0) return `${h}小时 ${m}分`;
-  return `${m}分钟`;
+  if (d > 0) return i18n.t("uptime_days", { ns: "performance", d, h });
+  if (h > 0) return i18n.t("uptime_hours", { ns: "performance", h, m });
+  return i18n.t("uptime_minutes", { ns: "performance", m });
 }

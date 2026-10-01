@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { FILE_TRANSFER_PROGRESS_EVENT } from "../../types/events";
 import type { FileTransferProgressPayload } from "../../types/events";
@@ -25,6 +26,7 @@ function formatBytes(n: number): string {
 }
 
 export function TransferQueuePanel({ connectionId }: TransferQueuePanelProps) {
+  const { t } = useTranslation("transfer");
   const allTasks = useTransferStore((s) => s.tasks);
   const updateTask = useTransferStore((s) => s.updateTask);
   const removeTask = useTransferStore((s) => s.removeTask);
@@ -54,7 +56,7 @@ export function TransferQueuePanel({ connectionId }: TransferQueuePanelProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted">
         <ListTree size={28} className="opacity-40" />
-        <span>暂无传输任务</span>
+        <span>{t("no_tasks")}</span>
       </div>
     );
   }
@@ -62,7 +64,7 @@ export function TransferQueuePanel({ connectionId }: TransferQueuePanelProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5 text-xs text-muted">
-        <span>{tasks.length} 个任务</span>
+        <span>{t("task_count", { count: tasks.length })}</span>
         {hasDone && (
           <button
             type="button"
@@ -70,7 +72,7 @@ export function TransferQueuePanel({ connectionId }: TransferQueuePanelProps) {
             className="flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-default-soft hover:text-foreground"
           >
             <Trash2 size={12} />
-            <span>清除已完成</span>
+            <span>{t("clear_done")}</span>
           </button>
         )}
       </div>
@@ -125,10 +127,10 @@ export function TransferQueuePanel({ connectionId }: TransferQueuePanelProps) {
                 </div>
                 <span className="w-28 flex-shrink-0 text-right text-xs text-muted">
                   {task.status === "error"
-                    ? (task.error ?? "失败").slice(0, 20)
+                    ? (task.error ?? t("failed")).slice(0, 20)
                     : task.total > 0
                       ? `${formatBytes(task.transferred)} / ${formatBytes(task.total)}`
-                      : "等待中"}
+                      : t("waiting")}
                 </span>
               </div>
             </div>

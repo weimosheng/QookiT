@@ -7,9 +7,11 @@ export type TabMeta = Record<string, unknown>;
 
 export interface ToolType {
   id: string;
-  name: string;
+  name?: string;
+  nameKey?: string;
   icon: ComponentType<{ size?: number; className?: string }>;
-  defaultTitle: string;
+  defaultTitle?: string;
+  defaultTitleKey?: string;
   defaultSide?: ToolSide;
   excludeFromLayout?: boolean;
   render: (

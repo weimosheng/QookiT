@@ -1,0 +1,10 @@
+{
+  "connection_center": "Connection Center",
+  "settings": "Settings",
+  "toggle_light": "Switch to light mode",
+  "toggle_dark": "Switch to dark mode",
+  "minimize": "Minimize",
+  "maximize": "Maximize",
+  "restore": "Restore",
+  "close": "Close"
+}

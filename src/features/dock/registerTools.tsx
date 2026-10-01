@@ -8,6 +8,7 @@ import { EditorPanel } from "../editor/EditorPanel";
 import { TransferQueuePanel } from "../transfer/TransferQueuePanel";
 import { terminalService } from "../../services/terminalService";
 import { dialogConfirm } from "../../lib/dialog";
+import i18n from "../../lib/i18n";
 import {
   Terminal,
   Folder,
@@ -20,9 +21,9 @@ import {
 
 registerTool({
   id: "terminal",
-  name: "终端",
+  nameKey: "dock:tool_terminal",
   icon: Terminal,
-  defaultTitle: "终端",
+  defaultTitleKey: "dock:tool_terminal",
   defaultSide: "center",
   render: (connId, instId) => (
     <TerminalView connectionId={connId} terminalId={instId} />
@@ -36,45 +37,45 @@ registerTool({
 
 registerTool({
   id: "files",
-  name: "文件管理器",
+  nameKey: "dock:tool_files",
   icon: Folder,
-  defaultTitle: "文件",
+  defaultTitleKey: "dock:file_title",
   defaultSide: "left",
   render: (connId) => <FileExplorer connectionId={connId} />,
 });
 
 registerTool({
   id: "search",
-  name: "搜索",
+  nameKey: "dock:tool_search",
   icon: Search,
-  defaultTitle: "搜索",
+  defaultTitleKey: "dock:tool_search",
   defaultSide: "left",
   render: (connId) => <SearchPanel connectionId={connId} />,
 });
 
 registerTool({
   id: "commands",
-  name: "命令面板",
+  nameKey: "dock:tool_commands",
   icon: CommandIcon,
-  defaultTitle: "命令",
+  defaultTitleKey: "dock:command_title",
   defaultSide: "left",
   render: (connId) => <CommandPalette connectionId={connId} />,
 });
 
 registerTool({
   id: "performance",
-  name: "性能",
+  nameKey: "dock:tool_performance",
   icon: Gauge,
-  defaultTitle: "性能",
+  defaultTitleKey: "dock:tool_performance",
   defaultSide: "right",
   render: (connId) => <PerformancePanel connectionId={connId} />,
 });
 
 registerTool({
   id: "editor",
-  name: "编辑器",
+  nameKey: "dock:tool_editor",
   icon: FileCode,
-  defaultTitle: "编辑器",
+  defaultTitleKey: "dock:tool_editor",
   defaultSide: "center",
   excludeFromLayout: true,
   render: (connId, instId, tab) => (
@@ -87,8 +88,8 @@ registerTool({
   onClose: async (_connId, _instId, tab) => {
     if (!tab?.dirty) return true;
     return dialogConfirm(
-      "未保存的更改",
-      `"${tab.title}" 有未保存的更改，确定关闭吗？`,
+      i18n.t("dock:unsaved_changes"),
+      i18n.t("dock:unsaved_changes_msg", { title: tab.title }),
       true,
     );
   },
@@ -96,9 +97,9 @@ registerTool({
 
 registerTool({
   id: "transfer",
-  name: "传输队列",
+  nameKey: "dock:tool_transfer",
   icon: ListTree,
-  defaultTitle: "传输",
+  defaultTitleKey: "dock:transfer_title",
   defaultSide: "bottom",
   render: (connId) => <TransferQueuePanel connectionId={connId} />,
 });

@@ -16,6 +16,7 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 import { useHostsStore } from "../stores/hostsStore";
 import type { Host } from "../types/host";
 import { FolderOpen } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface HostEditModalProps {
   host: Host;
@@ -25,6 +26,8 @@ interface HostEditModalProps {
 
 export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps) {
   const { add, update, hosts } = useHostsStore();
+  const { t } = useTranslation("connection");
+  const { t: tc } = useTranslation("common");
   const [form, setForm] = useState<Host>(host);
   const [portStr, setPortStr] = useState(String(host.port));
   const [saving, setSaving] = useState(false);
@@ -42,7 +45,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
 
   const handleSave = async () => {
     if (form.auth.type === "private_key" && !form.auth.key_content.trim()) {
-      setErrorMsg('私钥内容不能为空，请粘贴私钥内容或点击"读取"按钮选择文件');
+      setErrorMsg(t("key_empty"));
       return;
     }
     setSaving(true);
@@ -77,13 +80,13 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
   const handleReadKey = async () => {
     const filePath = await open({
       multiple: false,
-      filters: [{ name: "私钥文件", extensions: ["pem", "key", "id_rsa", "id_ed25519", ""] }],
+      filters: [{ name: t("key_file_filter"), extensions: ["pem", "key", "id_rsa", "id_ed25519", ""] }],
     });
     if (typeof filePath !== "string") return;
     try {
       const content = await readTextFile(filePath);
       if (!content.trim()) {
-        setErrorMsg("所选文件内容为空");
+        setErrorMsg(t("file_empty"));
         return;
       }
       setForm((prev) => ({
@@ -96,7 +99,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
       }));
       setErrorMsg(null);
     } catch (e) {
-      setErrorMsg(`读取私钥失败: ${e}`);
+      setErrorMsg(t("read_key_failed", { error: String(e) }));
     }
   };
 
@@ -108,14 +111,14 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
         <Modal.Container size="lg">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>{isNew ? "新建服务器" : "编辑服务器"}</Modal.Heading>
+              <Modal.Heading>{isNew ? t("new_server") : t("edit_server")}</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
               <TextField
                 value={form.name}
                 onChange={(v) => setForm({ ...form, name: v })}
               >
-                <Label>名称</Label>
+                <Label>{t("name")}</Label>
                 <Input />
               </TextField>
 
@@ -125,7 +128,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                   value={form.host}
                   onChange={(v) => setForm({ ...form, host: v })}
                 >
-                  <Label>主机</Label>
+                  <Label>{t("host")}</Label>
                   <Input />
                 </TextField>
                 <TextField
@@ -139,7 +142,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                     }
                   }}
                 >
-                  <Label>端口</Label>
+                  <Label>{t("port")}</Label>
                   <Input type="number" />
                 </TextField>
               </div>
@@ -148,7 +151,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                 value={form.username}
                 onChange={(v) => setForm({ ...form, username: v })}
               >
-                <Label>用户名</Label>
+                <Label>{t("username")}</Label>
                 <Input />
               </TextField>
 
@@ -158,15 +161,15 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                   setAuthType(key as "password" | "private_key");
                 }}
               >
-                <Label>认证方式</Label>
+                <Label>{t("auth_method")}</Label>
                 <Select.Trigger>
-                  {auth.type === "password" ? "密码" : "私钥文件"}
+                  {auth.type === "password" ? t("password") : t("private_key")}
                   <Select.Indicator />
                 </Select.Trigger>
                 <Select.Popover>
                   <ListBox>
-                    <ListBoxItem id="password">密码</ListBoxItem>
-                    <ListBoxItem id="private_key">私钥文件</ListBoxItem>
+                    <ListBoxItem id="password">{t("password")}</ListBoxItem>
+                    <ListBoxItem id="private_key">{t("private_key")}</ListBoxItem>
                   </ListBox>
                 </Select.Popover>
               </Select>
@@ -178,7 +181,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                     setForm({ ...form, auth: { type: "password", password: v } })
                   }
                 >
-                  <Label>密码</Label>
+                  <Label>{t("password")}</Label>
                   <Input type="password" />
                 </TextField>
               )}
@@ -187,7 +190,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                 <>
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
-                      <Label>私钥内容</Label>
+                      <Label>{t("key_content")}</Label>
                       <TextArea
                         className="mt-1 w-full font-mono text-xs"
                         rows={8}
@@ -202,12 +205,12 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                             },
                           })
                         }
-                        placeholder="粘贴私钥内容或点击右侧读取文件"
+                        placeholder={t("key_content_placeholder")}
                       />
                     </div>
                     <Button variant="secondary" onPress={handleReadKey} className="flex-shrink-0">
                       <FolderOpen size={14} className="mr-1" />
-                      读取
+                      {t("read")}
                     </Button>
                   </div>
                   <TextField
@@ -223,7 +226,7 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                       })
                     }
                   >
-                    <Label>密钥口令（可选）</Label>
+                    <Label>{t("passphrase")}</Label>
                     <Input type="password" />
                   </TextField>
                 </>
@@ -237,10 +240,10 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
             </Modal.Body>
             <Modal.Footer>
               <Button variant="ghost" onPress={() => onOpenChange(false)}>
-                取消
+                {tc("cancel")}
               </Button>
               <Button variant="primary" isDisabled={saving} onPress={handleSave}>
-                保存
+                {tc("save")}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

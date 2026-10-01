@@ -20,6 +20,7 @@ import {
 } from "./dockLayout";
 import { getTool, getTools, type TabMeta, type ToolSide } from "./toolRegistry";
 import type { Blueprint, LayoutTemplate } from "./layoutStore";
+import i18n from "../../lib/i18n";
 
 export type DockRegion = "left" | "right" | "bottom" | "center";
 export type SideRegionId = "left" | "right" | "bottom";
@@ -28,6 +29,8 @@ export interface TabInstance {
   id: string;
   toolTypeId: string;
   title: string;
+  titleKey?: string;
+  titleParams?: Record<string, unknown>;
   meta?: TabMeta;
   dirty?: boolean;
 }
@@ -149,16 +152,24 @@ async function createTab(
     ? await tool.createInstance(connectionId, meta)
     : genId("tab");
   const metaTitle = typeof meta?.title === "string" ? meta.title : undefined;
-  let title = metaTitle ?? tool?.defaultTitle ?? toolTypeId;
+  let title: string = metaTitle ?? tool?.defaultTitle ?? toolTypeId;
+  let titleKey: string | undefined;
+  let titleParams: Record<string, unknown> | undefined;
   if (toolTypeId === "terminal") {
     const seq = (terminalSeqByConn.get(connectionId) ?? 0) + 1;
     terminalSeqByConn.set(connectionId, seq);
-    title = `终端 ${seq}`;
+    titleKey = "terminal:terminal_title";
+    titleParams = { n: seq };
+    title = i18n.t("terminal:terminal_title", { n: seq });
+  } else if (metaTitle === undefined && tool?.defaultTitleKey) {
+    titleKey = tool.defaultTitleKey;
+    title = i18n.t(tool.defaultTitleKey);
   }
   return {
     id,
     toolTypeId,
     title,
+    ...(titleKey ? { titleKey, titleParams } : {}),
     ...(meta ? { meta } : {}),
   };
 }

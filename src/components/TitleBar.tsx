@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useTranslation } from "react-i18next";
 import { useConnectionsStore } from "../stores/connectionsStore";
 import { useThemeStore } from "../stores/themeStore";
 import { X, Minus, Square, Sun, Moon, LayoutGrid, Settings } from "lucide-react";
 import { SettingsModal } from "./SettingsModal";
 
 export function TitleBar() {
+  const { t } = useTranslation("titlebar");
   const { tabs, activeTabId, setActive, disconnect } = useConnectionsStore();
   const { dark, toggle } = useThemeStore();
   const [maximized, setMaximized] = useState(false);
@@ -45,7 +47,7 @@ export function TitleBar() {
           onClick={() => setActive(null)}
         >
           <LayoutGrid size={13} />
-          <span className="flex-1 truncate">连接中心</span>
+          <span className="flex-1 truncate">{t("connection_center")}</span>
         </div>
 
         {tabs.map((tab) => (
@@ -80,35 +82,35 @@ export function TitleBar() {
         <button
           className="rounded-md p-1.5 text-foreground hover:bg-default-soft transition-colors"
           onClick={() => setSettingsOpen(true)}
-          title="设置"
+          title={t("settings")}
         >
           <Settings size={14} />
         </button>
         <button
           className="rounded-md p-1.5 text-foreground hover:bg-default-soft transition-colors"
           onClick={toggle}
-          title={dark ? "切换到亮色模式" : "切换到暗色模式"}
+          title={dark ? t("toggle_light") : t("toggle_dark")}
         >
           {dark ? <Sun size={14} /> : <Moon size={14} />}
         </button>
         <button
           className="rounded-md p-1.5 text-foreground hover:bg-default-soft transition-colors"
           onClick={handleMinimize}
-          title="最小化"
+          title={t("minimize")}
         >
           <Minus size={14} />
         </button>
         <button
           className="rounded-md p-1.5 text-foreground hover:bg-default-soft transition-colors"
           onClick={handleMaximize}
-          title={maximized ? "还原" : "最大化"}
+          title={maximized ? t("restore") : t("maximize")}
         >
           <Square size={12} />
         </button>
         <button
           className="rounded-md p-1.5 text-foreground hover:bg-danger-soft hover:text-danger transition-colors"
           onClick={handleClose}
-          title="关闭"
+          title={t("close")}
         >
           <X size={14} />
         </button>

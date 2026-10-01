@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useDockStore,
   type TabInstance,
@@ -42,6 +43,7 @@ interface DockWorkspaceProps {
 }
 
 export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
+  const { t } = useTranslation("dock");
   const dock = useDockStore((s) => s.byConnection[connectionId]);
   const ensureInit = useDockStore((s) => s.ensureInit);
   const drag = useDragStore((s) => s.drag);
@@ -63,7 +65,7 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
     (cid: string, toolTypeId: string, region: DockRegion, iconAnchor?: string) => {
       void openTab(cid, toolTypeId, region, undefined, iconAnchor).catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
-        void dialogAlert("打开面板失败", msg || "未知错误");
+        void dialogAlert(t("terminal:open_panel_failed"), msg || t("common:unknown_error"));
       });
     },
     [openTab],
@@ -430,24 +432,25 @@ function SplitResizer({
 }
 
 function EmptyCenter({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation("terminal");
   const openTab = useDockStore((s) => s.openTab);
   return (
     <div className="flex h-full w-full items-center justify-center">
       <div className="flex flex-col items-center gap-3 text-muted">
         <Terminal size={32} className="opacity-40" />
-        <span className="text-sm">无终端</span>
+        <span className="text-sm">{t("no_terminal")}</span>
         <button
           type="button"
           onClick={() =>
             void openTab(connectionId, "terminal", "center").catch((e) => {
               const msg = e instanceof Error ? e.message : String(e);
-              void dialogAlert("创建终端失败", msg || "未知错误");
+              void dialogAlert(t("create_failed"), msg || t("common:unknown_error"));
             })
           }
           className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs text-accent-foreground hover:opacity-90"
         >
           <Plus size={14} />
-          创建终端
+          {t("create_terminal")}
         </button>
       </div>
     </div>
@@ -488,6 +491,7 @@ function SideActivityBar({
   const openTab = useDockStore((s) => s.openTab);
   const closeTab = useDockStore((s) => s.closeTab);
   const setActiveInRegion = useDockStore((s) => s.setActiveInRegion);
+  const { t } = useTranslation("dock");
 
   const tools = getTools();
   const toolSides = dock?.toolSides ?? {};
@@ -571,7 +575,7 @@ function SideActivityBar({
                 ? "bg-accent-soft text-accent"
                 : "text-muted hover:bg-default-soft hover:text-foreground",
             )}
-            title={tool.name}
+            title={tool.nameKey ? t(tool.nameKey) : tool.name}
           >
             <Icon size={18} />
           </button>
@@ -583,6 +587,7 @@ function SideActivityBar({
 }
 
 function LayoutButton({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation("dock");
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -619,7 +624,7 @@ function LayoutButton({ connectionId }: { connectionId: string }) {
             ? "bg-accent-soft text-accent"
             : "text-muted hover:bg-default-soft hover:text-foreground",
         )}
-        title="布局管理"
+        title={t("layout_manage")}
       >
         <LayoutGrid size={18} />
       </button>
@@ -642,6 +647,7 @@ function LayoutSettingsPanel({
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("dock");
   const templates = useLayoutStore((s) => s.templates);
   const saveTemplate = useLayoutStore((s) => s.save);
   const removeTemplate = useLayoutStore((s) => s.remove);
@@ -706,7 +712,7 @@ function LayoutSettingsPanel({
       style={{ left: 44, bottom: 8 }}
     >
       <div className="border-b border-border px-3 py-2 text-sm font-medium text-foreground">
-        布局管理
+        {t("layout_manage")}
       </div>
       <div className="flex flex-col gap-1 p-2">
         {saving ? (
@@ -720,7 +726,7 @@ function LayoutSettingsPanel({
                 if (e.key === "Enter") handleSave();
                 if (e.key === "Escape") { setSaving(false); setName(""); }
               }}
-              placeholder="布局名称"
+              placeholder={t("layout_name_placeholder")}
               className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent"
             />
             <div className="flex gap-2">
@@ -730,14 +736,14 @@ function LayoutSettingsPanel({
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-accent px-2 py-1.5 text-xs text-accent-foreground hover:opacity-90"
               >
                 <Save size={12} />
-                保存
+                {t("save")}
               </button>
               <button
                 type="button"
                 onClick={() => { setSaving(false); setName(""); }}
                 className="rounded-md border border-border px-2 py-1.5 text-xs text-muted hover:bg-default-soft"
               >
-                取消
+                {t("common:cancel")}
               </button>
             </div>
           </div>
@@ -748,7 +754,7 @@ function LayoutSettingsPanel({
             className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs text-foreground hover:bg-default-soft"
           >
             <Save size={12} />
-            保存当前布局
+            {t("save_current")}
           </button>
         )}
 
@@ -760,7 +766,7 @@ function LayoutSettingsPanel({
           className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-default-soft"
         >
           <RotateCcw size={12} className="text-accent" />
-          默认布局
+          {t("default_layout")}
         </button>
 
         <div className="my-1 h-px bg-border" />
@@ -773,7 +779,7 @@ function LayoutSettingsPanel({
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs text-foreground hover:bg-default-soft disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download size={12} />
-            导出
+            {t("export")}
           </button>
           <button
             type="button"
@@ -781,7 +787,7 @@ function LayoutSettingsPanel({
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs text-foreground hover:bg-default-soft"
           >
             <Upload size={12} />
-            导入
+            {t("import")}
           </button>
         </div>
 
@@ -789,23 +795,23 @@ function LayoutSettingsPanel({
           <>
             <div className="my-1 h-px bg-border" />
             <div className="flex flex-col gap-0.5">
-              {templates.map((t) => (
+              {templates.map((tpl) => (
                 <div
-                  key={t.id}
+                  key={tpl.id}
                   className="group flex items-center gap-1 rounded-md px-1 py-1 hover:bg-default-soft"
                 >
                   <button
                     type="button"
-                    onClick={() => handleLoad(t)}
+                    onClick={() => handleLoad(tpl)}
                     className="flex flex-1 items-center px-1 text-xs text-foreground"
                   >
-                    {t.name}
+                    {tpl.name}
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleRemove(t.id)}
+                    onClick={() => handleRemove(tpl.id)}
                     className="flex h-5 w-5 items-center justify-center rounded text-muted opacity-0 hover:text-foreground group-hover:opacity-100"
-                    title="删除"
+                    title={t("delete")}
                   >
                     <Trash2 size={11} />
                   </button>
@@ -835,6 +841,7 @@ interface PaneRect {
 }
 
 function RegionTree({ connectionId, region, tree, tabs }: RegionTreeProps) {
+  const { t } = useTranslation("terminal");
   const containerRef = useRef<HTMLDivElement>(null);
   const [paneRects, setPaneRects] = useState<Record<string, PaneRect>>({});
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -890,7 +897,7 @@ function RegionTree({ connectionId, region, tree, tabs }: RegionTreeProps) {
       newTab: () => {
         void openTab(connectionId, "terminal", region).catch((e) => {
           const msg = e instanceof Error ? e.message : String(e);
-          void dialogAlert("创建终端失败", msg || "未知错误");
+          void dialogAlert(t("create_failed"), msg || t("common:unknown_error"));
         });
       },
       split: (paneId: string, dir: "horizontal" | "vertical") =>

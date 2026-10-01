@@ -1,0 +1,7 @@
+{
+  "no_tasks": "暂无传输任务",
+  "task_count": "{{count}} 个任务",
+  "clear_done": "清除已完成",
+  "failed": "失败",
+  "waiting": "等待中"
+}

@@ -1,0 +1,16 @@
+{
+  "favorites": "收藏",
+  "history": "历史",
+  "add_favorite": "添加收藏命令",
+  "add_favorite_prompt": "输入要收藏的命令",
+  "no_favorites": "暂无收藏命令",
+  "no_history": "暂无命令历史",
+  "remove_favorite": "删除收藏",
+  "clear_history": "清空历史",
+  "unfavorite": "取消收藏",
+  "favorite": "收藏",
+  "run_confirm": "执行命令",
+  "run_confirm_msg": "是否发送到终端?\n\n{{cmd}}",
+  "no_terminal_title": "提示",
+  "no_terminal_msg": "没有可用的终端"
+}

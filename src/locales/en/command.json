@@ -1,0 +1,16 @@
+{
+  "favorites": "Favorites",
+  "history": "History",
+  "add_favorite": "Add favorite command",
+  "add_favorite_prompt": "Enter the command to favorite",
+  "no_favorites": "No favorite commands",
+  "no_history": "No command history",
+  "remove_favorite": "Remove favorite",
+  "clear_history": "Clear history",
+  "unfavorite": "Unfavorite",
+  "favorite": "Favorite",
+  "run_confirm": "Run command",
+  "run_confirm_msg": "Send to terminal?\n\n{{cmd}}",
+  "no_terminal_title": "Notice",
+  "no_terminal_msg": "No terminal available"
+}

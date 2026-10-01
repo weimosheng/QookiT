@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Compartment, EditorState, type Extension, type Text } from "@codemirror/state";
 import {
   EditorView,
@@ -167,6 +168,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
   const [encoding, setEncoding] = useState("utf-8");
   const [wrap, setWrap] = useState(() => useSettingsStore.getState().editorWordWrap);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { t } = useTranslation("editor");
   const [loadProgress, setLoadProgress] = useState<{
     read: number;
     total: number;
@@ -281,7 +283,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
       createView(text, big);
       setStatus("ready");
       const def = detectLanguage(path);
-      setLanguageLabel(def ? def.label : "Plain Text");
+      setLanguageLabel(def ? def.label : t("plain_text"));
       if (!def || big) return;
       void (async () => {
         const extension = await loadLanguage(def.id);
@@ -309,7 +311,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
       setStatus("loading");
       setErrorMsg("");
       setDirty(false);
-      setLanguageLabel("Plain Text");
+      setLanguageLabel(t("plain_text"));
       setLargeFile(false);
       setSaved(false);
       setLoadProgress(null);
@@ -372,7 +374,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
           try {
             text = new TextDecoder(enc).decode(bytes);
           } catch {
-            setErrorMsg(`不支持的编码：${enc}`);
+            setErrorMsg(t("unsupported_encoding", { encoding: enc }));
             setStatus("error");
             return;
           }
@@ -417,7 +419,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
         try {
           text = new TextDecoder(enc).decode(bytes);
         } catch {
-          void dialogAlert("编码错误", `无法用 ${enc} 解码该文件`);
+          void dialogAlert(t("encoding_error"), t("encoding_error_msg", { encoding: enc }));
           return;
         }
       }
@@ -541,7 +543,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      await dialogAlert("保存失败", String(e));
+      await dialogAlert(t("save_failed"), String(e));
     } finally {
       setSaving(false);
     }
@@ -558,7 +560,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
         </span>
         {largeFile && (
           <span className="flex-shrink-0 rounded bg-default-soft px-1.5 py-0.5 text-[10px] text-muted">
-            大文件模式
+            {t("large_file_mode")}
           </span>
         )}
         <span className="flex-shrink-0 rounded bg-default-soft px-1.5 py-0.5 text-[10px] text-muted">
@@ -571,7 +573,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
             onClick={handleUndo}
             disabled={status !== "ready"}
             className="rounded p-1 text-muted transition-colors hover:bg-default-soft hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            title="撤销 (Ctrl+Z)"
+            title={t("undo")}
           >
             <Undo2 size={14} />
           </button>
@@ -580,7 +582,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
             onClick={handleRedo}
             disabled={status !== "ready"}
             className="rounded p-1 text-muted transition-colors hover:bg-default-soft hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            title="重做 (Ctrl+Y)"
+            title={t("redo")}
           >
             <Redo2 size={14} />
           </button>
@@ -589,7 +591,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
             onClick={reloadFromServer}
             disabled={status === "loading"}
             className="rounded p-1 text-muted transition-colors hover:bg-default-soft hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            title="从服务器重新加载"
+            title={t("reload")}
           >
             <RefreshCw size={14} className={status === "loading" ? "animate-spin" : ""} />
           </button>
@@ -609,7 +611,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
                 ? "bg-accent-soft text-accent"
                 : "text-muted hover:bg-default-soft hover:text-foreground",
             )}
-            title="自动换行"
+            title={t("wrap")}
           >
             <WrapText size={14} />
           </button>
@@ -625,7 +627,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
               ? "text-accent hover:bg-accent-soft"
               : "cursor-not-allowed text-muted opacity-50",
           )}
-          title="保存 (Ctrl+S)"
+          title={t("save_tooltip")}
         >
           {saving ? (
             <Loader2 size={13} className="animate-spin" />
@@ -634,7 +636,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
           ) : (
             <Save size={13} />
           )}
-          <span>{saving ? "保存中" : saved && !dirty ? "已保存" : "保存"}</span>
+          <span>{saving ? t("saving") : saved && !dirty ? t("saved") : t("save")}</span>
         </button>
       </div>
 
@@ -680,7 +682,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
                   )
                 }
                 className="rounded p-1 transition-colors hover:bg-default-soft hover:text-foreground"
-                title="缩小"
+                title={t("zoom_out")}
               >
                 <ZoomOut size={15} />
               </button>
@@ -692,7 +694,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
                   setImagePan({ x: 0, y: 0 });
                 }}
                 className="rounded px-2 py-0.5 transition-colors hover:bg-default-soft hover:text-foreground"
-                title="重置缩放"
+                title={t("zoom_reset")}
               >
                 {Math.round(imageZoom * 100)}%
               </button>
@@ -702,7 +704,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
                   setImageZoom((z) => Math.min(10, +(z + 0.25).toFixed(2)))
                 }
                 className="rounded p-1 transition-colors hover:bg-default-soft hover:text-foreground"
-                title="放大"
+                title={t("zoom_in")}
               >
                 <ZoomIn size={15} />
               </button>
@@ -715,7 +717,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
               (loadProgress && loadProgress.total > 0 ? (
                 <div className="flex w-72 flex-col gap-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span>正在读取文件</span>
+                    <span>{t("reading_file")}</span>
                     <span>
                       {formatBytes(loadProgress.read)} /{" "}
                       {formatBytes(loadProgress.total)}
@@ -733,13 +735,13 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
               ) : (
                 <>
                   <Loader2 size={22} className="animate-spin text-accent" />
-                  <span>正在读取文件...</span>
+                  <span>{t("reading")}</span>
                 </>
               ))}
             {status === "error" && (
               <>
                 <AlertTriangle size={22} className="text-danger" />
-                <span>打开失败</span>
+                <span>{t("open_failed")}</span>
                 <span className="max-w-full break-all text-xs text-danger">
                   {errorMsg}
                 </span>
@@ -748,17 +750,17 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
             {status === "binary" && (
               <>
                 <FileWarning size={22} className="text-accent" />
-                <span>二进制文件，无法以文本方式编辑</span>
+                <span>{t("binary_file")}</span>
               </>
             )}
             {status === "too-large" && (
               <>
                 <FileWarning size={22} className="text-accent" />
                 <span>
-                  文件超过 {editorMaxFileSizeMb} MB，已取消打开以避免阻塞界面
+                  {t("too_large", { size: editorMaxFileSizeMb })}
                 </span>
                 <span className="text-xs text-muted">
-                  可在「设置 → 编辑器 → 最大打开大小」调整上限
+                  {t("too_large_hint")}
                 </span>
               </>
             )}

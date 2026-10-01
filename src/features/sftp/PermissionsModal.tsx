@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal, Button, useOverlayState } from "@heroui/react";
 import { sftpService } from "../../services/sftpService";
 import { dialogAlert } from "../../lib/dialog";
@@ -22,15 +23,15 @@ type Subject = "owner" | "group" | "other";
 type Action = "read" | "write" | "execute";
 
 const SUBJECT_LABELS: Record<Subject, string> = {
-  owner: "所有者",
-  group: "同组",
-  other: "其他",
+  owner: "perm_owner",
+  group: "perm_group",
+  other: "perm_other",
 };
 
 const ACTION_LABELS: Record<Action, string> = {
-  read: "读取",
-  write: "写入",
-  execute: "执行",
+  read: "perm_read",
+  write: "perm_write",
+  execute: "perm_execute",
 };
 
 function shellQuote(s: string): string {
@@ -61,6 +62,8 @@ export function PermissionsModal({
   const [octalInput, setOctalInput] = useState("755");
   const [applying, setApplying] = useState(false);
   const state = useOverlayState({ isOpen, onOpenChange });
+  const { t } = useTranslation("sftp");
+  const { t: tc } = useTranslation("common");
 
   useEffect(() => {
     if (isOpen && entry) {
@@ -99,13 +102,13 @@ export function PermissionsModal({
       const cmd = `chmod ${octal} ${shellQuote(entry.path)}`;
       const result = await sftpService.exec(connectionId, cmd);
       if (result.exit_code !== 0) {
-        await dialogAlert("设置权限失败", result.stderr || result.stdout);
+        await dialogAlert(t("perm_failed"), result.stderr || result.stdout);
         return;
       }
       onApplied?.();
       onOpenChange(false);
     } catch (e) {
-      await dialogAlert("设置权限失败", String(e));
+      await dialogAlert(t("perm_failed"), String(e));
     } finally {
       setApplying(false);
     }
@@ -122,7 +125,7 @@ export function PermissionsModal({
         <Modal.Container size="sm">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>权限设置</Modal.Heading>
+              <Modal.Heading>{t("perm_title")}</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
               <div className="flex flex-col gap-4 py-2">
@@ -130,7 +133,7 @@ export function PermissionsModal({
                   <span className="text-foreground">{entry.name}</span>
                   {entry.is_dir && (
                     <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent">
-                      文件夹
+                      {t("perm_folder")}
                     </span>
                   )}
                 </div>
@@ -139,13 +142,13 @@ export function PermissionsModal({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border bg-default-soft">
-                        <th className="px-3 py-1.5 text-left font-medium">权限</th>
+                        <th className="px-3 py-1.5 text-left font-medium">{t("perm_col")}</th>
                         {actions.map((a) => (
                           <th
                             key={a}
                             className="px-3 py-1.5 text-center font-medium"
                           >
-                            {ACTION_LABELS[a]}
+                            {t(ACTION_LABELS[a])}
                           </th>
                         ))}
                       </tr>
@@ -157,7 +160,7 @@ export function PermissionsModal({
                           className="border-b border-border last:border-0"
                         >
                           <td className="px-3 py-2 font-medium">
-                            {SUBJECT_LABELS[s]}
+                            {t(SUBJECT_LABELS[s])}
                           </td>
                           {actions.map((a) => {
                             const bit = BITS[s][a];
@@ -183,7 +186,7 @@ export function PermissionsModal({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <label className="text-sm text-muted">八进制</label>
+                  <label className="text-sm text-muted">{t("perm_octal")}</label>
                   <input
                     type="text"
                     value={octalInput}
@@ -192,7 +195,7 @@ export function PermissionsModal({
                     className="w-20 rounded border border-border bg-background px-2 py-1 text-sm outline-none focus:border-accent"
                   />
                   <span className="text-xs text-muted">
-                    实际结果：
+                    {t("perm_result")}
                     <span className="ml-1 font-mono text-foreground">
                       {symbolicMode(mode, entry.is_dir)}
                     </span>
@@ -205,14 +208,14 @@ export function PermissionsModal({
                 variant="ghost"
                 onPress={() => onOpenChange(false)}
               >
-                取消
+                {tc("cancel")}
               </Button>
               <Button
                 variant="primary"
                 isDisabled={applying}
                 onPress={() => void handleApply()}
               >
-                {applying ? "应用中..." : "应用"}
+                {applying ? t("perm_applying") : t("perm_apply")}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

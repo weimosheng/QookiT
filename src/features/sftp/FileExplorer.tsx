@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { sftpService } from "../../services/sftpService";
 import { terminalService } from "../../services/terminalService";
 import { save, open } from "@tauri-apps/plugin-dialog";
@@ -126,6 +127,8 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export function FileExplorer({ connectionId }: FileExplorerProps) {
+  const { t } = useTranslation("sftp");
+  const { t: tc } = useTranslation("common");
   const [treeCache, setTreeCache] = useState<Record<string, FileEntry[]>>({});
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set(["/"]),
@@ -267,19 +270,19 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
       const dir = parentDirOf(entry);
       const cmd = getExtractCommand(entry.path, dir);
       if (!cmd) {
-        await dialogAlert("解压失败", "不支持的压缩格式");
+        await dialogAlert(t("extract_failed"), t("unsupported_format"));
         return;
       }
       setBusy(true);
       try {
         const result = await sftpService.exec(connectionId, cmd);
         if (result.exit_code !== 0) {
-          await dialogAlert("解压失败", result.stderr || result.stdout);
+          await dialogAlert(t("extract_failed"), result.stderr || result.stdout);
         } else {
           await loadDir(dir, true);
         }
       } catch (e) {
-        await dialogAlert("解压失败", String(e));
+        await dialogAlert(t("extract_failed"), String(e));
       } finally {
         setBusy(false);
       }
@@ -298,7 +301,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   const handleRename = useCallback(
     async (entry: FileEntry) => {
       closeMenu();
-      const newName = await dialogPrompt("重命名", entry.name);
+      const newName = await dialogPrompt(t("rename_title"), entry.name);
       if (newName === null || newName === "" || newName === entry.name) return;
       const dir = parentDirOf(entry);
       const newPath = dir === "/" ? `/${newName}` : `${dir}/${newName}`;
@@ -307,7 +310,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         await sftpService.rename(connectionId, entry.path, newPath);
         await loadDir(dir, true);
       } catch (e) {
-        await dialogAlert("重命名失败", String(e));
+        await dialogAlert(t("rename_failed"), String(e));
       } finally {
         setBusy(false);
       }
@@ -318,7 +321,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   const handleDelete = useCallback(
     async (entry: FileEntry) => {
       closeMenu();
-      const ok = await dialogConfirm("删除", `确定删除 "${entry.name}"?`, true);
+      const ok = await dialogConfirm(t("delete_title"), t("delete_confirm", { name: entry.name }), true);
       if (!ok) return;
       const dir = parentDirOf(entry);
       setBusy(true);
@@ -330,7 +333,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         }
         await loadDir(dir, true);
       } catch (e) {
-        await dialogAlert("删除失败", String(e));
+        await dialogAlert(t("delete_failed"), String(e));
       } finally {
         setBusy(false);
       }
@@ -357,7 +360,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
       closeMenu();
       const localPath = await save({
         defaultPath: entry.name,
-        filters: [{ name: "所有文件", extensions: ["*"] }],
+        filters: [{ name: t("all_files"), extensions: ["*"] }],
       });
       if (!localPath) return;
       const id = crypto.randomUUID();
@@ -428,7 +431,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
       closeMenu();
       const selected = await open({
         multiple: true,
-        filters: [{ name: "所有文件", extensions: ["*"] }],
+        filters: [{ name: t("all_files"), extensions: ["*"] }],
       });
       if (!selected || selected.length === 0) return;
       startUpload(targetDir, selected);
@@ -523,8 +526,8 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         const okFiles = tempNeeded.filter((f) => f.size <= MAX_DRAG_SIZE);
         if (tooLarge.length > 0) {
           await dialogAlert(
-            "文件过大",
-            `以下文件超过 50MB，请用右键菜单"上传"选择文件：\n${tooLarge.map((f) => f.name).join("\n")}`,
+            t("file_too_large"),
+            t("file_too_large_msg", { files: tooLarge.map((f) => f.name).join("\n") }),
           );
         }
         if (okFiles.length > 0) {
@@ -539,7 +542,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
               direction: "upload",
               filename: f.name,
               remotePath,
-              localPath: "(拖拽)",
+              localPath: t("drag_upload"),
               transferred: 0,
               total: f.size,
               status: "pending",
@@ -593,7 +596,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
             "center",
           );
         } catch (e) {
-          await dialogAlert("打开终端失败", String(e));
+          await dialogAlert(t("open_terminal_failed"), String(e));
           return;
         }
       }
@@ -604,7 +607,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           `cd ${targetDir}\n`,
         );
       } catch (e) {
-        await dialogAlert("cd 失败", String(e));
+        await dialogAlert(t("cd_failed"), String(e));
       }
     },
     [closeMenu, connectionId],
@@ -613,7 +616,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   const handleNewFolder = useCallback(
     async (targetDir: string) => {
       closeMenu();
-      const name = await dialogPrompt("新建文件夹", "", "请输入文件夹名称");
+      const name = await dialogPrompt(t("new_folder_title"), "", t("new_folder_prompt"));
       if (!name) return;
       const newPath = targetDir === "/" ? `/${name}` : `${targetDir}/${name}`;
       setBusy(true);
@@ -622,7 +625,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         await loadDir(targetDir, true);
         setExpandedPaths((prev) => new Set(prev).add(targetDir));
       } catch (e) {
-        await dialogAlert("新建文件夹失败", String(e));
+        await dialogAlert(t("new_folder_failed"), String(e));
       } finally {
         setBusy(false);
       }
@@ -652,7 +655,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           break;
         }
         if (!destPath) {
-          await dialogAlert("粘贴失败", "无法找到可用的目标名称");
+          await dialogAlert(t("paste_failed"), t("paste_no_target"));
           return;
         }
         const cmd = clipboard.cut
@@ -661,15 +664,15 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         const result = await sftpService.exec(connectionId, cmd);
         if (result.exit_code !== 0) {
           await dialogAlert(
-            `${clipboard.cut ? "移动" : "复制"}失败`,
-            result.stderr || result.stdout || `退出码 ${result.exit_code}`,
+            clipboard.cut ? t("move_failed") : t("copy_failed"),
+            result.stderr || result.stdout || t("exit_code", { code: result.exit_code }),
           );
         } else {
           if (clipboard.cut) clearClipboard();
           await loadDir(targetDir, true);
         }
       } catch (e) {
-        await dialogAlert(`${clipboard.cut ? "移动" : "复制"}失败`, String(e));
+        await dialogAlert(clipboard.cut ? t("move_failed") : t("copy_failed"), String(e));
       } finally {
         setBusy(false);
       }
@@ -827,7 +830,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           className="py-1 text-xs text-danger"
           style={{ paddingLeft: depth * 16 + 24 }}
         >
-          加载失败: {err}
+          {t("load_failed")}: {err}
         </div>
       );
     }
@@ -839,14 +842,14 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
             className="py-1 text-xs text-muted"
             style={{ paddingLeft: depth * 16 + 24 }}
           >
-            加载中...
+            {t("loading")}
           </div>
         );
       }
       return null;
     }
     if (entries.length === 0 && depth === 0) {
-      return <div className="p-4 text-center text-muted">空目录</div>;
+      return <div className="p-4 text-center text-muted">{t("empty_dir")}</div>;
     }
     return entries.map((entry) => {
       const expanded = expandedPaths.has(entry.path);
@@ -912,21 +915,21 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
         <button
           className="rounded p-1 hover:bg-default-soft"
           onClick={handleRefreshAll}
-          title="刷新"
+          title={t("refresh")}
         >
           <RefreshCw size={14} />
         </button>
         <button
           className="rounded p-1 hover:bg-default-soft"
           onClick={handleCollapseAll}
-          title="全部收起"
+          title={t("collapse_all")}
         >
           <ChevronsDownUp size={14} />
         </button>
         <button
           className="rounded p-1 hover:bg-default-soft"
           onClick={ensureTransferTab}
-          title="传输队列"
+          title={t("transfer_queue")}
         >
           <ListTree size={14} />
         </button>
@@ -943,14 +946,14 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
               if (e.key === "Enter") handleSearch();
               if (e.key === "Escape") clearSearch();
             }}
-            placeholder="搜索文件名 (回车搜索)"
+            placeholder={t("search_placeholder")}
             className="w-full rounded border border-border bg-background py-1 pl-7 pr-7 text-sm outline-none focus:border-accent"
           />
           {searchQuery && (
             <button
               className="absolute right-1 rounded p-0.5 text-muted hover:bg-default-soft hover:text-foreground"
               onClick={clearSearch}
-              title="清除"
+              title={tc("clear")}
             >
               <X size={13} />
             </button>
@@ -972,10 +975,10 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
       {searchResults !== null ? (
         <div className="flex-1 overflow-y-auto">
           {searching && (
-            <div className="p-4 text-center text-sm text-muted">搜索中...</div>
+            <div className="p-4 text-center text-sm text-muted">{t("search_searching")}</div>
           )}
           {!searching && searchResults.length === 0 && (
-            <div className="p-4 text-center text-sm text-muted">无结果</div>
+            <div className="p-4 text-center text-sm text-muted">{t("search_no_result")}</div>
           )}
           {!searching &&
             searchResults.map((item) => {
@@ -1005,7 +1008,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
           onDrop={handleDrop}
         >
           {busy && (
-            <div className="p-2 text-center text-xs text-muted">处理中...</div>
+            <div className="p-2 text-center text-xs text-muted">{t("processing")}</div>
           )}
           {renderTree("/", 0)}
         </div>
@@ -1023,12 +1026,12 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
                 <>
                   <MenuRow
                     icon={<FileCode size={14} />}
-                    label="编辑"
+                    label={t("menu_edit")}
                     onClick={() => handleOpenInEditor(menu.entry!)}
                   />
                   <MenuRow
                     icon={<Download size={14} />}
-                    label="下载"
+                    label={t("menu_download")}
                     onClick={() => handleDownload(menu.entry!)}
                   />
                   <div className="my-1 h-px bg-border" />
@@ -1036,52 +1039,52 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
               )}
               <MenuRow
                 icon={<Copy size={14} />}
-                label="复制路径"
+                label={t("menu_copy_path")}
                 onClick={() => handleCopyPath(menu.entry!)}
               />
               <MenuRow
                 icon={<Lock size={14} />}
-                label="权限"
+                label={t("menu_permissions")}
                 onClick={() => handlePermissions(menu.entry!)}
               />
               {!menu.entry.is_dir && isArchive(menu.entry.name) && (
                 <MenuRow
                   icon={<FileArchive size={14} />}
-                  label="解压"
+                  label={t("menu_extract")}
                   onClick={() => handleExtract(menu.entry!)}
                 />
               )}
               <MenuRow
                 icon={<Archive size={14} />}
-                label="压缩"
+                label={t("menu_compress")}
                 onClick={() => handleCompress(menu.entry!)}
               />
               <div className="my-1 h-px bg-border" />
               <MenuRow
                 icon={<Copy size={14} />}
-                label="复制"
+                label={t("menu_copy")}
                 onClick={() => handleCopy(menu.entry!)}
               />
               <MenuRow
                 icon={<Scissors size={14} />}
-                label="剪切"
+                label={t("menu_cut")}
                 onClick={() => handleCut(menu.entry!)}
               />
               <MenuRow
                 icon={<Pencil size={14} />}
-                label="重命名"
+                label={t("menu_rename")}
                 onClick={() => handleRename(menu.entry!)}
               />
               <MenuRow
                 icon={<Trash2 size={14} />}
-                label="删除"
+                label={t("menu_delete")}
                 danger
                 onClick={() => handleDelete(menu.entry!)}
               />
               <div className="my-1 h-px bg-border" />
               <MenuRow
                 icon={<Terminal size={14} />}
-                label={menu.entry.is_dir ? "在终端中打开" : "cd 到所在目录"}
+                label={menu.entry.is_dir ? t("menu_open_in_terminal") : t("menu_cd_to_dir")}
                 onClick={() => handleCdToTerminal(menu.entry!)}
               />
               {menu.entry.is_dir && (
@@ -1089,17 +1092,17 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
                   <div className="my-1 h-px bg-border" />
                   <MenuRow
                     icon={<Upload size={14} />}
-                    label="上传到此目录"
+                    label={t("menu_upload_here")}
                     onClick={() => handleUpload(menu.entry!.path)}
                   />
                   <MenuRow
                     icon={<FolderPlus size={14} />}
-                    label="新建文件夹"
+                    label={t("menu_new_folder")}
                     onClick={() => handleNewFolder(menu.entry!.path)}
                   />
                   <MenuRow
                     icon={<ClipboardPaste size={14} />}
-                    label="粘贴"
+                    label={t("menu_paste")}
                     disabled={!canPaste}
                     onClick={() => handlePaste(menu.entry!.path)}
                   />
@@ -1110,24 +1113,24 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
             <>
               <MenuRow
                 icon={<Upload size={14} />}
-                label="上传"
+                label={t("menu_upload")}
                 onClick={() => handleUpload(menu.dirContext)}
               />
               <MenuRow
                 icon={<FolderPlus size={14} />}
-                label="新建文件夹"
+                label={t("menu_new_folder")}
                 onClick={() => handleNewFolder(menu.dirContext)}
               />
               <MenuRow
                 icon={<ClipboardPaste size={14} />}
-                label="粘贴"
+                label={t("menu_paste")}
                 disabled={!canPaste}
                 onClick={() => handlePaste(menu.dirContext)}
               />
               <div className="my-1 h-px bg-border" />
               <MenuRow
                 icon={<RefreshCw size={14} />}
-                label="刷新"
+                label={t("refresh")}
                 onClick={handleRefreshAll}
               />
             </>

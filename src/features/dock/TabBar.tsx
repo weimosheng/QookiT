@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import type { TabInstance } from "./dockStore";
 import { getTool } from "./toolRegistry";
 import { useDragStore } from "./dragStore";
@@ -35,6 +36,7 @@ export function TabBar({
   onSplitV,
   onTabDragStart,
 }: TabBarProps) {
+  const { t } = useTranslation("dock");
   const draggingTabId = useDragStore((s) => s.drag?.tabId ?? null);
   const [menu, setMenu] = useState<{ tabId: string; x: number; y: number } | null>(
     null,
@@ -108,11 +110,13 @@ export function TabBar({
               )}
             >
               {Icon && <Icon size={13} className="flex-shrink-0 text-accent" />}
-              <span className="max-w-[120px] truncate">{tab.title}</span>
+              <span className="max-w-[120px] truncate">
+                {tab.titleKey ? t(tab.titleKey, tab.titleParams ?? {}) : tab.title}
+              </span>
               {tab.dirty && (
                 <span
                   className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent"
-                  title="未保存"
+                  title={t("unsaved")}
                 />
               )}
               <button
@@ -122,7 +126,7 @@ export function TabBar({
                   onClose(tab.id);
                 }}
                 className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-muted opacity-0 hover:bg-default-soft hover:text-foreground group-hover:opacity-100"
-                title="关闭"
+                title={t("common:close")}
               >
                 <X size={11} />
               </button>
@@ -147,7 +151,7 @@ export function TabBar({
               className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-default-soft"
             >
               <X size={13} className="flex-shrink-0" />
-              关闭标签页
+              {t("tab_close")}
             </button>
             <button
               type="button"
@@ -158,7 +162,7 @@ export function TabBar({
               className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-default-soft"
             >
               <XCircle size={13} className="flex-shrink-0" />
-              关闭其他标签页
+              {t("tab_close_others")}
             </button>
             <button
               type="button"
@@ -169,7 +173,7 @@ export function TabBar({
               className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-default-soft"
             >
               <XCircle size={13} className="flex-shrink-0" />
-              关闭右侧标签页
+              {t("tab_close_right")}
             </button>
           </div>,
           document.body,
@@ -179,7 +183,7 @@ export function TabBar({
           type="button"
           onClick={onNewTab}
           className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-default-soft hover:text-foreground"
-          title="新建终端"
+          title={t("new_terminal")}
         >
           <Plus size={14} />
         </button>
@@ -188,7 +192,7 @@ export function TabBar({
             type="button"
             onClick={onSplitH}
             className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-default-soft hover:text-foreground"
-            title="水平分屏"
+            title={t("split_horizontal")}
           >
             <SplitSquareHorizontal size={14} />
           </button>
@@ -198,7 +202,7 @@ export function TabBar({
             type="button"
             onClick={onSplitV}
             className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-default-soft hover:text-foreground"
-            title="垂直分屏"
+            title={t("split_vertical")}
           >
             <SplitSquareVertical size={14} />
           </button>

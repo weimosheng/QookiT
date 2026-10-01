@@ -1,0 +1,12 @@
+{
+  "toggle_theme": "切换主题",
+  "new_terminal": "新建终端",
+  "open_files": "文件管理器",
+  "open_search": "搜索",
+  "open_commands": "命令面板",
+  "open_editor": "编辑器",
+  "open_transfer": "传输队列",
+  "open_performance": "性能",
+  "next_connection": "下一个连接",
+  "prev_connection": "上一个连接"
+}

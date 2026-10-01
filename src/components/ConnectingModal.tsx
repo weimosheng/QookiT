@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal, Button, useOverlayState } from "@heroui/react";
 import { listen } from "@tauri-apps/api/event";
 import { Loader2, CheckCircle2, XCircle, Circle } from "lucide-react";
@@ -21,16 +22,11 @@ interface ConnectingModalProps {
   onConnect: () => Promise<void>;
 }
 
-const STEP_LABELS: Record<string, string> = {
-  resolve: "解析主机",
-  tcp: "建立连接",
-  auth: "身份认证",
-  ready: "连接就绪",
-};
-
 const STEP_ORDER = ["resolve", "tcp", "auth", "ready"];
 
 export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }: ConnectingModalProps) {
+  const { t } = useTranslation("connection");
+  const { t: tc } = useTranslation("common");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -137,6 +133,14 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
     }
   };
 
+  const stepLabel = (step: string) => {
+    if (step === "resolve") return t("step_resolve");
+    if (step === "tcp") return t("step_tcp");
+    if (step === "auth") return t("step_auth");
+    if (step === "ready") return t("step_ready");
+    return step;
+  };
+
   const stepStatus = (step: string): "pending" | "active" | "success" | "error" => {
     const stepLogs = logs.filter((l) => l.step === step);
     if (stepLogs.some((l) => l.status === "error")) return "error";
@@ -154,19 +158,19 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
             <Modal.Header>
               <Modal.Heading>
                 {hasError
-                  ? "连接失败"
+                  ? t("connect_failed")
                   : cancelled
-                    ? "连接已取消"
+                    ? t("connect_cancelled")
                     : finished
-                      ? "连接成功"
-                      : `正在连接 ${hostName}`}
+                      ? t("connect_success")
+                      : t("connecting", { name: hostName })}
               </Modal.Heading>
             </Modal.Header>
             <Modal.Body>
               <div className="mb-4 space-y-2">
                 {STEP_ORDER.map((step) => {
                   const status = stepStatus(step);
-                  const label = STEP_LABELS[step] || step;
+                   const label = stepLabel(step);
                   return (
                     <div key={step} className="flex items-center gap-2 text-sm">
                       {status === "success" && (
@@ -194,7 +198,7 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
               </div>
 
               <div className="rounded-md bg-[#1e1e2e] p-3 font-mono text-xs leading-relaxed text-[#cdd6f4] max-h-48 overflow-y-auto">
-                {logs.length === 0 && <div className="text-muted">等待日志...</div>}
+                {logs.length === 0 && <div className="text-muted">{t("waiting_logs")}</div>}
                 {logs.map((log, i) => (
                   <div key={i} className="whitespace-pre-wrap">
                     <span className="text-muted">
@@ -213,7 +217,7 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
                   onPress={handleCancel}
                   isDisabled={cancelling}
                 >
-                  {cancelling ? "取消中…" : "取消"}
+                  {cancelling ? t("cancelling") : t("cancel")}
                 </Button>
               )}
               {finished && (
@@ -221,7 +225,7 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
                   variant={hasError || cancelled ? "danger" : "ghost"}
                   onPress={onClose}
                 >
-                  {hasError || cancelled ? "关闭" : "完成"}
+                  {hasError || cancelled ? tc("close") : tc("done")}
                 </Button>
               )}
             </Modal.Footer>

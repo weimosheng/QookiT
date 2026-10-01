@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useCommandStore } from "../../stores/commandStore";
 import { useTerminalActiveStore } from "../../stores/terminalActiveStore";
 import { terminalService } from "../../services/terminalService";
@@ -16,6 +17,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ connectionId }: CommandPaletteProps) {
+  const { t } = useTranslation("command");
   const history = useCommandStore((s) => s.history);
   const favorites = useCommandStore((s) => s.favorites);
   const addFavorite = useCommandStore((s) => s.addFavorite);
@@ -26,17 +28,17 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
   );
 
   const run = async (cmd: string) => {
-    const ok = await dialogConfirm("执行命令", `是否发送到终端?\n\n${cmd}`);
+    const ok = await dialogConfirm(t("run_confirm"), t("run_confirm_msg", { cmd }));
     if (!ok) return;
     if (!activeTerminalId) {
-      await dialogAlert("提示", "没有可用的终端");
+      await dialogAlert(t("no_terminal_title"), t("no_terminal_msg"));
       return;
     }
     await terminalService.write(connectionId, activeTerminalId, cmd + "\n");
   };
 
   const handleAdd = async () => {
-    const cmd = await dialogPrompt("添加收藏命令", "", "输入要收藏的命令");
+    const cmd = await dialogPrompt(t("add_favorite"), "", t("add_favorite_prompt"));
     if (cmd) addFavorite(cmd);
   };
 
@@ -44,20 +46,20 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
     <div className="flex h-full flex-col select-none">
       <div className="flex flex-1 flex-col overflow-hidden border-b border-border">
         <div className="flex items-center gap-2 border-b border-border bg-background px-2 py-1">
-          <span className="text-sm font-medium">收藏</span>
+          <span className="text-sm font-medium">{t("favorites")}</span>
           <span className="text-xs text-muted">({favorites.length})</span>
           <div className="flex-1" />
           <button
             className="rounded p-1 hover:bg-default-soft"
             onClick={handleAdd}
-            title="添加收藏命令"
+            title={t("add_favorite")}
           >
             <Plus size={14} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {favorites.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted">暂无收藏命令</div>
+            <div className="p-4 text-center text-sm text-muted">{t("no_favorites")}</div>
           ) : (
             favorites.map((cmd) => (
               <CommandRow
@@ -72,7 +74,7 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
                       e.stopPropagation();
                       removeFavorite(cmd);
                     }}
-                    title="删除收藏"
+                    title={t("remove_favorite")}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -85,20 +87,20 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center gap-2 border-b border-border bg-background px-2 py-1">
-          <span className="text-sm font-medium">历史</span>
+          <span className="text-sm font-medium">{t("history")}</span>
           <span className="text-xs text-muted">({history.length})</span>
           <div className="flex-1" />
           <button
             className="rounded p-1 hover:bg-default-soft"
             onClick={clearHistory}
-            title="清空历史"
+            title={t("clear_history")}
           >
             <Trash2 size={14} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {history.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted">暂无命令历史</div>
+            <div className="p-4 text-center text-sm text-muted">{t("no_history")}</div>
           ) : (
             history.map((cmd) => {
               const isFav = favorites.includes(cmd);
@@ -117,7 +119,7 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
                         e.stopPropagation();
                         isFav ? removeFavorite(cmd) : addFavorite(cmd);
                       }}
-                      title={isFav ? "取消收藏" : "收藏"}
+                      title={isFav ? t("unfavorite") : t("favorite")}
                     >
                       <Star
                         size={13}

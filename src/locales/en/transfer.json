@@ -1,0 +1,7 @@
+{
+  "no_tasks": "No transfer tasks",
+  "task_count": "{{count}} tasks",
+  "clear_done": "Clear completed",
+  "failed": "Failed",
+  "waiting": "Waiting"
+}

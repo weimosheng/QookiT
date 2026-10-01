@@ -1,0 +1,18 @@
+{
+  "placeholder": "搜索内容 (回车搜索, Esc 清除)",
+  "case_sensitive": "区分大小写",
+  "regex": "正则表达式",
+  "whole_word": "整词匹配",
+  "search": "搜索",
+  "clear": "清除",
+  "file_filter": "文件过滤 (如 *.ts)",
+  "search_path": "搜索路径",
+  "grep_error": "grep 命令出错",
+  "stats": "结果 · {{files}} 个文件 · {{matches}} 处匹配",
+  "searching": "搜索中...",
+  "empty_hint": "输入内容并回车开始搜索",
+  "empty_hint_sub": "缩小搜索路径可显著加速",
+  "no_match": "未找到匹配",
+  "jump_hint": "{{path}} (双击跳转到文件树)",
+  "jump_to_tree": "跳转到文件树"
+}

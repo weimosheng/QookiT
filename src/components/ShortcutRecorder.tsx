@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { keyEventToCombo, formatCombo } from "../lib/keycombo";
 
@@ -10,6 +11,7 @@ interface ShortcutRecorderProps {
 
 /** 快捷键录制控件：点击进入录制，捕获下一次组合键写回；Esc 取消，× 清除。 */
 export function ShortcutRecorder({ value, onChange, onClear }: ShortcutRecorderProps) {
+  const { t } = useTranslation();
   const [recording, setRecording] = useState(false);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export function ShortcutRecorder({ value, onChange, onClear }: ShortcutRecorderP
         className="w-32 rounded-md border border-accent bg-accent-soft px-2 py-1 text-sm text-accent"
         onClick={() => setRecording(false)}
       >
-        按下组合键…
+        {t("press_combo")}
       </button>
     );
   }
@@ -56,7 +58,7 @@ export function ShortcutRecorder({ value, onChange, onClear }: ShortcutRecorderP
           type="button"
           onClick={onClear}
           className="text-muted transition-colors hover:text-danger"
-          title="清除"
+          title={t("clear")}
         >
           <X size={14} />
         </button>

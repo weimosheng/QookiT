@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 
@@ -21,6 +22,7 @@ export function EncodingSelect({
   onChange,
   disabled,
 }: EncodingSelectProps) {
+  const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -68,7 +70,7 @@ export function EncodingSelect({
         disabled={disabled}
         onClick={toggle}
         className="flex h-[22px] flex-shrink-0 items-center gap-1 rounded border border-border bg-default-soft px-1.5 text-[10px] text-muted outline-none transition-colors hover:text-foreground focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
-        title="编码"
+        title={t("encoding")}
       >
         <span className="max-w-[88px] truncate">{current?.label ?? value}</span>
         <ChevronDown

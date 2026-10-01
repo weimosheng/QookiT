@@ -1,0 +1,10 @@
+{
+  "connection_center": "连接中心",
+  "settings": "设置",
+  "toggle_light": "切换到亮色模式",
+  "toggle_dark": "切换到暗色模式",
+  "minimize": "最小化",
+  "maximize": "最大化",
+  "restore": "还原",
+  "close": "关闭"
+}

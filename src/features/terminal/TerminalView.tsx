@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -131,6 +132,7 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
   const terminalFontFamily = useSettingsStore((s) => s.terminalFontFamily);
   const terminalFontSize = useSettingsStore((s) => s.terminalFontSize);
   const terminalScrollback = useSettingsStore((s) => s.terminalScrollback);
+  const { t } = useTranslation("terminal");
 
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
@@ -323,19 +325,19 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
             color: dark ? "#cdd6f4" : "#1e1e2e",
           }}
         >
-          <MenuItem dark={dark} label="复制" shortcut="Ctrl+Shift+C" disabled={!hasSelection} onClick={handleCopy} />
-          <MenuItem dark={dark} label="粘贴" shortcut="Ctrl+Shift+V" onClick={handlePaste} />
+          <MenuItem dark={dark} label={t("menu_copy")} shortcut="Ctrl+Shift+C" disabled={!hasSelection} onClick={handleCopy} />
+          <MenuItem dark={dark} label={t("menu_paste")} shortcut="Ctrl+Shift+V" onClick={handlePaste} />
           <div
             className="my-1 h-px"
             style={{ background: dark ? "#3a3a4a" : "#e5e7eb" }}
           />
-          <MenuItem dark={dark} label="全选" onClick={handleSelectAll} />
-          <MenuItem dark={dark} label="清除选择" disabled={!hasSelection} onClick={handleClearSelection} />
+          <MenuItem dark={dark} label={t("menu_select_all")} onClick={handleSelectAll} />
+          <MenuItem dark={dark} label={t("menu_clear_selection")} disabled={!hasSelection} onClick={handleClearSelection} />
           <div
             className="my-1 h-px"
             style={{ background: dark ? "#3a3a4a" : "#e5e7eb" }}
           />
-          <MenuItem dark={dark} label="清屏" onClick={handleClearScreen} />
+          <MenuItem dark={dark} label={t("menu_clear_screen")} onClick={handleClearScreen} />
         </div>
       )}
     </div>
