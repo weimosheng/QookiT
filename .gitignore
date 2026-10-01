@@ -27,6 +27,9 @@ lerna-debug.log*
 .copilot/
 temp/
 
+# 本机 pnpm 配置（store-dir 指向本机绝对路径，不应入库）
+.npmrc
+
 # 上架操作手册：含内部发布流程与密钥名称，仅本地保留
 /MSIX_STORE.md
 
