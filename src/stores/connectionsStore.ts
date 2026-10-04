@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { connectionService } from "../services/connectionService";
+import { systemInfoService } from "../services/systemInfoService";
+import { useHostsStore } from "./hostsStore";
 
 export interface ConnectionTab {
   connectionId: string;
@@ -14,6 +16,7 @@ interface ConnectionsState {
   connect: (hostId: string) => Promise<string>;
   disconnect: (connectionId: string) => Promise<void>;
   setActive: (connectionId: string | null) => void;
+  reorderTabs: (fromId: string, toId: string, insertBefore: boolean) => void;
 }
 
 export const useConnectionsStore = create<ConnectionsState>((set) => ({
@@ -33,6 +36,13 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
         tabs: [...s.tabs, tab],
         activeTabId: info.connection_id,
       }));
+      void systemInfoService.get(info.host_id, info.connection_id).then((sysInfo) => {
+        useHostsStore.setState((s) => ({
+          hosts: s.hosts.map((h) =>
+            h.id === info.host_id ? { ...h, system_info: sysInfo } : h,
+          ),
+        }));
+      }).catch(() => {});
       return info.connection_id;
     } finally {
       set({ connecting: false });
@@ -56,5 +66,17 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
   },
   setActive: (connectionId) => {
     set({ activeTabId: connectionId });
+  },
+  reorderTabs: (fromId, toId, insertBefore) => {
+    set((s) => {
+      const fromIdx = s.tabs.findIndex((t) => t.connectionId === fromId);
+      const toIdx = s.tabs.findIndex((t) => t.connectionId === toId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return {};
+      const tabs = [...s.tabs];
+      const [moved] = tabs.splice(fromIdx, 1);
+      const adjustedToIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      tabs.splice(insertBefore ? adjustedToIdx : adjustedToIdx + 1, 0, moved);
+      return { tabs };
+    });
   },
 }));

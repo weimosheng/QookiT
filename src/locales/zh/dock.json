@@ -25,5 +25,7 @@
   "tool_transfer": "传输队列",
   "file_title": "文件",
   "command_title": "命令",
-  "transfer_title": "传输"
+  "transfer_title": "传输",
+  "workspace_loading": "正在准备工作区…",
+  "workspace_init_failed": "工作区打开失败"
 }

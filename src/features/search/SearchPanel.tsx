@@ -74,7 +74,7 @@ function buildGrepCommand(opts: {
   const parts = ["grep", ...flags];
   for (const d of EXCLUDE_DIRS) parts.push(`--exclude-dir=${d}`);
   const glob = opts.fileGlob.trim();
-  if (glob) parts.push(`--include=${glob}`);
+  if (glob) parts.push(`--include=${shellQuote(glob)}`);
   parts.push("--", shellQuote(opts.pattern), shellQuote(opts.path));
   parts.push("2>/dev/null");
   parts.push("|", "head", `-${MAX_OUTPUT_LINES}`);

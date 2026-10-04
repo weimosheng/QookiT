@@ -26,6 +26,7 @@ lerna-debug.log*
 .codeartsdoer/
 .copilot/
 temp/
+.tmp_*
 
 # 本机 pnpm 配置（store-dir 指向本机绝对路径，不应入库）
 .npmrc

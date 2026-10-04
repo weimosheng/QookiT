@@ -1,12 +1,21 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{AppError, AppResult};
+use crate::groups::GroupStore;
 use crate::hosts::HostStore;
 use crate::ssh::{Connection, SftpManager, TerminalChannel};
+
+/// 等待用户确认的首次连接主机密钥。
+pub struct PendingHostKey {
+    /// 发起该确认的连接所属主机 id，`cancel_connect` 据此一并撤销。
+    pub host_id: String,
+    /// 用户回执通道：`true` 表示信任并记录该密钥。
+    pub responder: oneshot::Sender<bool>,
+}
 
 pub struct ConnectionEntry {
     pub connection: Connection,
@@ -21,17 +30,22 @@ pub struct ConnectionEntry {
 
 pub struct AppState {
     pub store: HostStore,
+    pub groups_store: GroupStore,
     pub connections: Arc<Mutex<HashMap<String, Arc<ConnectionEntry>>>>,
     /// 进行中的连接：host_id → 取消令牌。cancel_connect 据此中断握手。
     pub connecting: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// 等待用户确认的首次连接主机密钥：request_id → 回执通道。
+    pub pending_host_keys: Arc<Mutex<HashMap<String, PendingHostKey>>>,
 }
 
 impl AppState {
-    pub fn new(store: HostStore) -> Self {
+    pub fn new(store: HostStore, groups_store: GroupStore) -> Self {
         Self {
             store,
+            groups_store,
             connections: Arc::new(Mutex::new(HashMap::new())),
             connecting: Arc::new(Mutex::new(HashMap::new())),
+            pending_host_keys: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

@@ -1,6 +1,8 @@
 {
   "center_title": "连接中心",
   "server_count": "{{count}} 台服务器",
+  "all_connections": "全部",
+  "search_placeholder": "搜索服务器...",
   "ping_all": "全部测速",
   "add_server": "添加服务器",
   "hide_address": "隐藏地址",
@@ -8,6 +10,7 @@
   "no_servers": "还没有服务器",
   "no_servers_hint": "点击右上角\"添加服务器\"开始",
   "connected": "已连接",
+  "cpu_cores": "{{count}} 核",
   "password_auth": "密码认证",
   "key_auth": "密钥认证",
   "connect": "连接",
@@ -19,6 +22,7 @@
   "latency_testing": "检测中...",
   "latency_unreachable": "不可达",
   "confirm_delete": "确认删除服务器 {{name}}?",
+  "confirm_delete_group": "确认删除分组 {{name}}？分组内的服务器将变为未分组。",
   "no_host_key": "无主机密钥记录",
   "no_host_key_msg": "{{host}}:{{port}} 还没有已记录的主机密钥，首次连接时会自动记录。",
   "clear_host_key_title": "清除主机密钥记录",
@@ -53,5 +57,17 @@
   "key_empty": "私钥内容不能为空，请粘贴私钥内容或点击\"读取\"按钮选择文件",
   "file_empty": "所选文件内容为空",
   "read_key_failed": "读取私钥失败: {{error}}",
-  "key_file_filter": "私钥文件"
+  "key_file_filter": "私钥文件",
+  "group": "分组",
+  "group_placeholder": "输入分组名（留空则不分组）",
+  "ungrouped": "未分组",
+  "new_group": "新建分组",
+  "new_group_prompt": "输入分组名",
+  "password_empty": "密码不能为空",
+  "credential_keep_hint": "留空表示沿用已保存的凭据（不修改）",
+  "host_key_verify_title": "确认服务器主机密钥",
+  "host_key_verify_msg": "首次连接 {{host}}:{{port}}。请与服务器管理员核对以下指纹，确认无误后再信任。",
+  "host_key_verify_hint": "若指纹与预期不符，可能存在中间人攻击，请选择「拒绝」。信任后该密钥会记录到 ~/.ssh/known_hosts。",
+  "host_key_accept": "信任并连接",
+  "host_key_reject": "拒绝"
 }

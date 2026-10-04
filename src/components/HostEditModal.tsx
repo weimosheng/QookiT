@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Modal,
   Button,
@@ -14,9 +14,12 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { useHostsStore } from "../stores/hostsStore";
+import { useGroupsStore } from "../stores/groupsStore";
 import type { Host } from "../types/host";
-import { FolderOpen } from "lucide-react";
+import { createEmptyGroup } from "../types/group";
+import { FolderOpen, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { dialogPrompt } from "../lib/dialog";
 
 interface HostEditModalProps {
   host: Host;
@@ -26,6 +29,7 @@ interface HostEditModalProps {
 
 export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps) {
   const { add, update, hosts } = useHostsStore();
+  const { groups, add: addGroup, load: loadGroups } = useGroupsStore();
   const { t } = useTranslation("connection");
   const { t: tc } = useTranslation("common");
   const [form, setForm] = useState<Host>(host);
@@ -35,17 +39,35 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
 
   const state = useOverlayState({ isOpen, onOpenChange });
 
+  const isNew = !hosts.some((h) => h.id === host.id);
+
   useEffect(() => {
+    if (!isOpen) return;
+    // 凭据明文不再回填界面：列表中的主机凭据已脱敏，编辑时留空即表示沿用原凭据。
     setForm(host);
     setPortStr(String(host.port));
     setErrorMsg(null);
-  }, [host]);
+    void loadGroups();
+  }, [host, isOpen, loadGroups]);
 
-  const isNew = !hosts.some((h) => h.id === host.id);
+  const existingGroups = useMemo(
+    () => groups.map((g) => g.name).sort(),
+    [groups],
+  );
 
   const handleSave = async () => {
-    if (form.auth.type === "private_key" && !form.auth.key_content.trim()) {
+    // 新建主机、或改动了认证方式时必须重新填写凭据；否则留空表示沿用原凭据。
+    const credentialRequired = isNew || form.auth.type !== host.auth.type;
+    if (
+      form.auth.type === "private_key" &&
+      credentialRequired &&
+      !form.auth.key_content.trim()
+    ) {
       setErrorMsg(t("key_empty"));
+      return;
+    }
+    if (form.auth.type === "password" && credentialRequired && !form.auth.password) {
+      setErrorMsg(t("password_empty"));
       return;
     }
     setSaving(true);
@@ -122,6 +144,45 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
                 <Input />
               </TextField>
 
+              <Select
+                selectedKey={form.group ?? ""}
+                onSelectionChange={(key) => {
+                  const k = String(key);
+                  if (k === "__new__") {
+                    void (async () => {
+                      const name = await dialogPrompt(t("new_group_prompt"), form.group ?? "");
+                      if (name && name.trim()) {
+                        const trimmed = name.trim();
+                        await addGroup(createEmptyGroup(trimmed));
+                        setForm({ ...form, group: trimmed });
+                      }
+                    })();
+                    return;
+                  }
+                  setForm({ ...form, group: k === "" ? null : k });
+                }}
+              >
+                <Label>{t("group")}</Label>
+                <Select.Trigger>
+                  {form.group ?? t("ungrouped")}
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    <ListBoxItem id="">{t("ungrouped")}</ListBoxItem>
+                    {existingGroups.map((g) => (
+                      <ListBoxItem key={g} id={g}>{g}</ListBoxItem>
+                    ))}
+                    <ListBoxItem id="__new__">
+                      <span className="flex items-center gap-1 text-accent">
+                        <Plus size={14} />
+                        {t("new_group")}
+                      </span>
+                    </ListBoxItem>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+
               <div className="flex gap-2">
                 <TextField
                   className="flex-1"
@@ -175,19 +236,31 @@ export function HostEditModal({ host, isOpen, onOpenChange }: HostEditModalProps
               </Select>
 
               {auth.type === "password" && (
-                <TextField
-                  value={auth.password}
-                  onChange={(v) =>
-                    setForm({ ...form, auth: { type: "password", password: v } })
-                  }
-                >
-                  <Label>{t("password")}</Label>
-                  <Input type="password" />
-                </TextField>
+                <div className="flex flex-col gap-1">
+                  <TextField
+                    value={auth.password}
+                    onChange={(v) =>
+                      setForm({ ...form, auth: { type: "password", password: v } })
+                    }
+                  >
+                    <Label>{t("password")}</Label>
+                    <Input type="password" />
+                  </TextField>
+                  {!isNew && auth.type === host.auth.type && (
+                    <span className="text-xs text-muted">
+                      {t("credential_keep_hint")}
+                    </span>
+                  )}
+                </div>
               )}
 
               {auth.type === "private_key" && (
                 <>
+                  {!isNew && auth.type === host.auth.type && (
+                    <span className="text-xs text-muted">
+                      {t("credential_keep_hint")}
+                    </span>
+                  )}
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <Label>{t("key_content")}</Label>

@@ -17,4 +17,7 @@ export const connectionService = {
   /** 清除该主机已记录的主机密钥，返回删除的条目数。 */
   forgetHostKey: (host: string, port: number) =>
     invoke<number>("forget_host_key", { host, port }),
+  /** 回应「首次连接主机密钥确认」请求。 */
+  respondHostKey: (requestId: string, accepted: boolean) =>
+    invoke<void>("respond_host_key", { requestId, accepted }),
 };

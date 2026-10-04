@@ -60,5 +60,10 @@
   "tech_stack": "Tech Stack",
   "backend_stack": "Backend Rust · russh · russh-sftp",
   "frontend_stack": "Frontend Vite · Tailwind CSS v4",
+  "close_action": "Close Button Behavior",
+  "close_action_hint": "Default action when clicking the close button",
+  "close_action_ask": "Ask every time",
+  "close_action_close": "Quit directly",
+  "close_action_minimize": "Minimize to tray",
   "done": "Done"
 }

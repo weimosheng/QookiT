@@ -224,21 +224,11 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
   const handleOpenInEditor = useCallback(
     (entry: FileEntry) => {
       closeMenu();
-      const dockStore = useDockStore.getState();
-      const dock = dockStore.byConnection[connectionId];
-      if (dock) {
-        for (const tab of Object.values(dock.tabs)) {
-          if (tab.toolTypeId === "editor" && tab.meta?.path === entry.path) {
-            dockStore.focusTab(connectionId, tab.id);
-            return;
-          }
-        }
-      }
-      void dockStore
-        .openTab(connectionId, "editor", "center", {
-          path: entry.path,
-          title: entry.name,
-        })
+      // 编辑器只保留「当前文件 + 有未保存改动的文件」：
+      // 已打开且未修改的标签页会被自动关掉，避免看一个文件就多一个标签页。
+      void useDockStore
+        .getState()
+        .openFileInEditor(connectionId, entry.path, entry.name)
         .catch((e) => console.error("[editor] open failed:", e));
     },
     [closeMenu, connectionId],

@@ -1,0 +1,8 @@
+{
+  "title": "Close Window",
+  "message": "Do you want to quit the app or minimize to the system tray?",
+  "close": "Quit",
+  "minimize": "Minimize to Tray",
+  "remember": "Remember my choice",
+  "cancel": "Cancel"
+}

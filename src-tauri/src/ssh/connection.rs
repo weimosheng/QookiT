@@ -10,7 +10,10 @@ use tokio::time::{timeout, Duration};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{AppError, AppResult};
-use crate::events::{ConnectionLogPayload, EVENT_CONNECTION_LOG};
+use crate::events::{
+    ConnectionLogPayload, HostKeyVerifyDonePayload, HostKeyVerifyPayload, EVENT_CONNECTION_LOG,
+    EVENT_HOST_KEY_VERIFY, EVENT_HOST_KEY_VERIFY_DONE,
+};
 use crate::hosts::AuthMethod;
 use crate::ssh::auth::{resolve_credential, AuthCredential};
 use crate::ssh::host_key::{self, HostKeyVerdict};
@@ -26,6 +29,11 @@ pub struct ExecResult {
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+/// 首次连接等待用户确认主机密钥的超时时间，超时视为拒绝。
+const HOST_KEY_CONFIRM_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// exec 单路 stdout/stderr 的输出上限，防止 `cat /dev/urandom` 等命令撑爆内存。
+const MAX_EXEC_OUTPUT: usize = 64 * 1024 * 1024;
 
 /// 客户端回调：负责主机密钥校验（TOFU）与握手阶段日志。
 struct ClientHandler {
@@ -33,6 +41,8 @@ struct ClientHandler {
     host_id: String,
     host: String,
     port: u16,
+    /// 连接取消令牌：取消连接时一并放弃等待主机密钥确认，避免挂起。
+    cancel: CancellationToken,
 }
 
 impl ClientHandler {
@@ -47,12 +57,76 @@ impl ClientHandler {
             },
         );
     }
+
+    /// 首次连接：把服务器密钥指纹交给用户核对，等待其确认。
+    ///
+    /// 返回 `true` 表示用户确认信任（调用方才写入 known_hosts）；
+    /// 返回 `false` 表示用户拒绝、超时或连接被取消。
+    async fn confirm_first_use(&self, algorithm: &str, fingerprint: &str) -> bool {
+        use tauri::Manager;
+
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        {
+            let state = self.app.state::<crate::state::AppState>();
+            state.pending_host_keys.lock().await.insert(
+                request_id.clone(),
+                crate::state::PendingHostKey {
+                    host_id: self.host_id.clone(),
+                    responder: tx,
+                },
+            );
+        }
+
+        self.log(
+            "tcp",
+            format!(
+                "首次连接 {}:{}，请核对主机密钥 {algorithm} {fingerprint}",
+                self.host, self.port
+            ),
+            "info",
+        );
+        let _ = self.app.emit(
+            EVENT_HOST_KEY_VERIFY,
+            HostKeyVerifyPayload {
+                request_id: request_id.clone(),
+                host: self.host.clone(),
+                port: self.port,
+                algorithm: algorithm.to_string(),
+                fingerprint: fingerprint.to_string(),
+            },
+        );
+
+        let accepted = tokio::select! {
+            reply = rx => matches!(reply, Ok(true)),
+            _ = self.cancel.cancelled() => false,
+            _ = tokio::time::sleep(HOST_KEY_CONFIRM_TIMEOUT) => {
+                self.log("tcp", "等待主机密钥确认超时，已中止连接".to_string(), "error");
+                false
+            }
+        };
+
+        // 无论结果如何都清理挂起项，避免连接取消/超时后残留（内存泄漏）。
+        {
+            let state = self.app.state::<crate::state::AppState>();
+            state.pending_host_keys.lock().await.remove(&request_id);
+        }
+        // 通知前端关闭该确认对话框（用户已主动回应时前端会忽略此事件）。
+        let _ = self.app.emit(
+            EVENT_HOST_KEY_VERIFY_DONE,
+            HostKeyVerifyDonePayload {
+                request_id,
+            },
+        );
+
+        accepted
+    }
 }
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    /// 主机密钥校验：首次连接记录并放行，已记录且一致则放行，不一致则拒绝。
+    /// 主机密钥校验：首次连接需用户确认后记录并放行，已记录且一致则放行，不一致则拒绝。
     async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
         let algorithm = host_key::algorithm(key);
         let fingerprint = host_key::fingerprint(key);
@@ -66,6 +140,17 @@ impl client::Handler for ClientHandler {
                 Ok(true)
             }
             HostKeyVerdict::Unknown => {
+                // 首次连接：必须由用户核对指纹后确认，避免静默信任导致首次连接即被中间人劫持。
+                if !self.confirm_first_use(&algorithm, &fingerprint).await {
+                    self.log(
+                        "tcp",
+                        format!(
+                            "未确认主机密钥 {algorithm} {fingerprint}，已中止连接"
+                        ),
+                        "error",
+                    );
+                    return Ok(false);
+                }
                 match host_key::learn(&self.host, self.port, key) {
                     Ok(path) => {
                         self.log(
@@ -144,6 +229,7 @@ impl Connection {
             host_id: host_id.to_string(),
             host: host.to_string(),
             port,
+            cancel: cancel.clone(),
         };
 
         emit_log("tcp", &format!("正在建立 TCP 连接 {}:{}...", host, port), "start");
@@ -310,9 +396,19 @@ impl Connection {
             match msg {
                 Some(ChannelMsg::Data { ref data }) => {
                     stdout.extend_from_slice(data.as_ref());
+                    if stdout.len() > MAX_EXEC_OUTPUT {
+                        return Err(AppError::Other(
+                            "命令输出过大（超过 64 MB），已中止".into(),
+                        ));
+                    }
                 }
                 Some(ChannelMsg::ExtendedData { ref data, .. }) => {
                     stderr.extend_from_slice(data.as_ref());
+                    if stderr.len() > MAX_EXEC_OUTPUT {
+                        return Err(AppError::Other(
+                            "命令错误输出过大（超过 64 MB），已中止".into(),
+                        ));
+                    }
                 }
                 Some(ChannelMsg::ExitStatus { exit_status }) => {
                     exit_code = Some(exit_status as i32);

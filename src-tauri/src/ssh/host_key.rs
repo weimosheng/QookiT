@@ -79,15 +79,23 @@ pub fn forget(host: &str, port: u16) -> AppResult<usize> {
     }
     let drop_lines: HashSet<usize> = matched.iter().map(|(line, _)| *line).collect();
     let content = std::fs::read_to_string(&path)?;
-    let kept: Vec<&str> = content
-        .lines()
+    // 用 split_inclusive 保留每行原有的换行符（含 CRLF），只剔除目标行，
+    // 避免把整份文件的换行风格改写、破坏与 OpenSSH 的互操作性。
+    let output: String = content
+        .split_inclusive('\n')
         .enumerate()
         .filter(|(index, _)| !drop_lines.contains(&(index + 1)))
         .map(|(_, line)| line)
         .collect();
-    let mut output = kept.join("\n");
-    output.push('\n');
-    std::fs::write(&path, output)?;
+
+    // 先写同目录临时文件再原子替换，避免写入中断导致 known_hosts 损坏。
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, output.as_bytes())?;
+    if let Ok(meta) = std::fs::metadata(&path) {
+        // 尽量沿用原文件权限，避免把 0600 变成默认权限。
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
+    std::fs::rename(&tmp, &path)?;
     Ok(drop_lines.len())
 }
 

@@ -30,6 +30,8 @@ import {
   AlertTriangle,
   Keyboard,
   Languages,
+  Power,
+  Minimize2,
 } from "lucide-react";
 import { shortcutActions, type ShortcutGroup } from "../lib/shortcutActions";
 import { DEFAULT_SHORTCUTS } from "../lib/shortcutDefaults";
@@ -206,6 +208,46 @@ export function SettingsModal({ isOpen, onOpenChange }: SettingsModalProps) {
                           />
                         </div>
                       </Row>
+                      <div className="flex flex-col gap-2 py-2.5">
+                        <div className="flex flex-col">
+                          <span className="text-sm text-foreground">
+                            {t("close_action")}
+                          </span>
+                          <span className="text-xs text-muted">
+                            {t("close_action_hint")}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <ThemeButton
+                            active={settings.closeAction === "ask"}
+                            label={t("close_action_ask")}
+                            onClick={() =>
+                              settings.update({ closeAction: "ask" })
+                            }
+                            className="w-full"
+                          />
+                          <div className="flex gap-2">
+                            <ThemeButton
+                              active={settings.closeAction === "close"}
+                              icon={<Power size={15} />}
+                              label={t("close_action_close")}
+                              onClick={() =>
+                                settings.update({ closeAction: "close" })
+                              }
+                              className="flex-1"
+                            />
+                            <ThemeButton
+                              active={settings.closeAction === "minimizeToTray"}
+                              icon={<Minimize2 size={15} />}
+                              label={t("close_action_minimize")}
+                              onClick={() =>
+                                settings.update({ closeAction: "minimizeToTray" })
+                              }
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </Section>
                   )}
 
@@ -597,21 +639,23 @@ function ThemeButton({
   icon,
   label,
   onClick,
+  className,
 }: {
   active: boolean;
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors ${
+      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors ${
         active
           ? "border-accent bg-accent-soft text-accent"
           : "border-border text-foreground hover:bg-default-soft"
-      }`}
+      } ${className ?? ""}`}
     >
       {icon}
       <span>{label}</span>
@@ -699,7 +743,7 @@ function NumberInput({
         const n = Number(e.target.value);
         if (!isNaN(n)) onChange(n);
       }}
-      className="w-24 rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+      className="w-24 rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground"
     />
   );
 }

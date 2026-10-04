@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, XCircle, Circle } from "lucide-react";
 import { CONNECTION_LOG_EVENT } from "../types/events";
 import type { ConnectionLogPayload } from "../types/events";
 import { connectionService } from "../services/connectionService";
+import { useThemeStore } from "../stores/themeStore";
 
 interface LogEntry {
   step: string;
@@ -27,6 +28,7 @@ const STEP_ORDER = ["resolve", "tcp", "auth", "ready"];
 export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }: ConnectingModalProps) {
   const { t } = useTranslation("connection");
   const { t: tc } = useTranslation("common");
+  const { dark } = useThemeStore();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -197,10 +199,10 @@ export function ConnectingModal({ hostId, hostName, isOpen, onClose, onConnect }
                 })}
               </div>
 
-              <div className="rounded-md bg-[#1e1e2e] p-3 font-mono text-xs leading-relaxed text-[#cdd6f4] max-h-48 overflow-y-auto">
+              <div className={`rounded-md p-3 font-mono text-xs leading-relaxed text-[#cdd6f4] max-h-48 overflow-y-auto overflow-x-hidden ${dark ? "bg-[#0a0a0f]" : "bg-[#1e1e2e]"}`}>
                 {logs.length === 0 && <div className="text-muted">{t("waiting_logs")}</div>}
                 {logs.map((log, i) => (
-                  <div key={i} className="whitespace-pre-wrap">
+                  <div key={i} className="whitespace-pre-wrap break-words">
                     <span className="text-muted">
                       [{new Date(log.timestamp).toLocaleTimeString()}]
                     </span>{" "}

@@ -1,14 +1,21 @@
 mod commands;
 mod error;
 mod events;
+mod groups;
 mod hosts;
 mod packaging;
 mod ssh;
 mod state;
 mod store_update;
 
+use groups::GroupStore;
 use hosts::HostStore;
 use state::AppState;
+use tauri::Emitter;
+
+use std::sync::atomic::AtomicBool;
+/// 标记 force_quit 已调用，避免 on_window_event 再次拦截关闭。
+pub(crate) static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 
 /// 启动阶段致命错误：GUI 模式下 panic 只会静默退出，
 /// 因此这里用系统消息框把原因告诉用户，再退出进程。
@@ -54,8 +61,9 @@ fn fatal(message: &str) -> ! {
 
 fn init_state() -> crate::error::AppResult<AppState> {
     let dir = hosts::store::default_store_dir()?;
-    let store = HostStore::new(dir)?;
-    Ok(AppState::new(store))
+    let store = HostStore::new(dir.clone())?;
+    let groups_store = GroupStore::new(dir)?;
+    Ok(AppState::new(store, groups_store))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -95,6 +103,9 @@ pub fn run() {
         .manage(state)
         .setup(|app| {
             use tauri::Manager;
+            use tauri::menu::{Menu, MenuItem};
+            use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+
             if let Some(win) = app.get_webview_window("main") {
                 if let Ok(icon) =
                     tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
@@ -102,18 +113,67 @@ pub fn run() {
                     let _ = win.set_icon(icon);
                 }
             }
+
+            let show_item = MenuItem::with_id(app, "show", "显示", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let tray_icon =
+                tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
+            TrayIconBuilder::new()
+                .icon(tray_icon)
+                .menu(&menu)
+                .tooltip("QookiT")
+                .show_menu_on_left_click(true)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::DoubleClick { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                })
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            use tauri::Manager;
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if !FORCE_QUIT.load(std::sync::atomic::Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.app_handle().emit("close-requested", ());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::app::is_store_packaged,
+            commands::app::force_quit,
             commands::app::check_store_updates,
             commands::app::install_store_updates,
             commands::hosts::list_hosts,
             commands::hosts::add_host,
             commands::hosts::update_host,
             commands::hosts::delete_host,
+            commands::groups::list_groups,
+            commands::groups::add_group,
+            commands::groups::update_group,
+            commands::groups::delete_group,
             commands::connection::connect_host,
             commands::connection::cancel_connect,
+            commands::connection::respond_host_key,
             commands::connection::disconnect_host,
             commands::connection::ping_host,
             commands::connection::forget_host_key,
@@ -137,6 +197,7 @@ pub fn run() {
             commands::sftp::sftp_write_file,
             commands::sftp::sftp_canonicalize,
             commands::sftp::ssh_exec,
+            commands::system_info::get_system_info,
             commands::performance::performance_sample,
             commands::layout::read_layout_templates,
             commands::layout::write_layout_templates,

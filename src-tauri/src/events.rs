@@ -5,6 +5,10 @@ pub const EVENT_CONNECTION_CLOSED: &str = "connection:closed";
 pub const EVENT_CONNECTION_LOG: &str = "connection:log";
 pub const EVENT_FILE_READ_PROGRESS: &str = "file:read_progress";
 pub const EVENT_FILE_TRANSFER_PROGRESS: &str = "file:transfer_progress";
+/// 首次连接：请求用户确认服务器主机密钥（TOFU）。
+pub const EVENT_HOST_KEY_VERIFY: &str = "host-key:verify";
+/// 该确认请求已结束（信任 / 拒绝 / 超时 / 连接被取消），前端据此关闭对话框。
+pub const EVENT_HOST_KEY_VERIFY_DONE: &str = "host-key:verify-done";
 
 #[derive(Clone, serde::Serialize)]
 pub struct TerminalDataPayload {
@@ -53,4 +57,22 @@ pub struct FileTransferProgressPayload {
     pub total: u64,
     pub status: String,
     pub error: Option<String>,
+}
+
+/// 首次连接时展示给用户的服务器主机密钥信息。
+#[derive(Clone, serde::Serialize)]
+pub struct HostKeyVerifyPayload {
+    pub request_id: String,
+    pub host: String,
+    pub port: u16,
+    /// 密钥算法，如 `ssh-ed25519`
+    pub algorithm: String,
+    /// SHA256 指纹，形如 `SHA256:AbCdEf...`
+    pub fingerprint: String,
+}
+
+/// 主机密钥确认结束通知。
+#[derive(Clone, serde::Serialize)]
+pub struct HostKeyVerifyDonePayload {
+    pub request_id: String,
 }

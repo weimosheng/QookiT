@@ -142,6 +142,9 @@ function emptyDock(): ConnectionDock {
 // 每个连接的终端序号：在 createTab 内同步递增，避免异步写回 store 前竞态导致编号重复/跳号。
 const terminalSeqByConn = new Map<string, number>();
 
+// 每个连接正在进行的初始化任务：合并并发调用（StrictMode 双执行、重复 ensureInit）。
+const initInFlight = new Map<string, Promise<void>>();
+
 async function createTab(
   connectionId: string,
   toolTypeId: string,
@@ -285,6 +288,18 @@ interface DockState {
     /** 拖到活动栏时：插到这个工具的图标之前（空则追加到末尾） */
     iconAnchor?: string,
   ) => Promise<string>;
+  /**
+   * 在编辑器中打开文件（编辑器的专用入口）。
+   *
+   * 与通用 `openTab` 不同：编辑器标签页代表「当前正在看的文件」，不应每开一个就堆一个。
+   * 因此这里会先聚焦同名文件；否则关掉所有**没有未保存改动**的编辑器标签页再打开，
+   * 有改动的标签页会保留下来（用户可能正想对照修改）。
+   */
+  openFileInEditor: (
+    connectionId: string,
+    path: string,
+    title: string,
+  ) => Promise<string>;
   splitInRegion: (
     connectionId: string,
     region: DockRegion,
@@ -383,60 +398,80 @@ export const useDockStore = create<DockState>((set, get) => ({
       }
       return;
     }
-    const dock = existing ?? emptyDock();
-    if (dock.center) return;
 
-    const tools = getTools();
-    const sideTool: Partial<Record<ToolSide, string>> = {};
-    for (const t of tools) {
-      const side = t.defaultSide ?? "center";
-      if (!sideTool[side]) sideTool[side] = t.id;
-    }
+    // 并发保护：React StrictMode 下 effect 会执行两遍，若不合并会创建两个终端
+    // （其中一个成为孤儿 PTY，直到连接断开才释放），也会让重复的加载占位闪烁。
+    const inflight = initInFlight.get(connectionId);
+    if (inflight) return inflight;
+    let release!: () => void;
+    initInFlight.set(
+      connectionId,
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
 
-    const tabs = { ...dock.tabs };
-    const toolSides = { ...dock.toolSides };
-    for (const t of tools) {
-      if (!toolSides[t.id]) toolSides[t.id] = t.defaultSide ?? "center";
-    }
-    const iconOrder = normalizeIconOrder(dock.iconOrder, toolSides);
-    const sideTrees: Record<SideRegionId, LayoutNode | null> = {
-      left: dock.left,
-      right: dock.right,
-      bottom: dock.bottom,
-    };
+    try {
+      const dock = existing ?? emptyDock();
 
-    const centerToolId = sideTool.center ?? "terminal";
-    const centerTab = await createTab(connectionId, centerToolId);
-    tabs[centerTab.id] = centerTab;
-    const center = createInitialLayout(centerTab.id);
-
-    for (const side of ["left", "right", "bottom"] as SideRegionId[]) {
-      if (sideTrees[side]) continue;
-      const toolId = sideTool[side];
-      if (toolId) {
-        const tab = await createTab(connectionId, toolId);
-        tabs[tab.id] = tab;
-        sideTrees[side] = createInitialLayout(tab.id);
+      const tools = getTools();
+      const sideTool: Partial<Record<ToolSide, string>> = {};
+      for (const t of tools) {
+        const side = t.defaultSide ?? "center";
+        if (!sideTool[side]) sideTool[side] = t.id;
       }
-    }
 
-    set({
-      byConnection: {
-        ...get().byConnection,
-        [connectionId]: {
-          tabs,
-          left: sideTrees.left,
-          right: sideTrees.right,
-          bottom: sideTrees.bottom,
-          center,
-          toolSides,
-          iconOrder,
-          leftWidth: dock.leftWidth,
-          rightWidth: dock.rightWidth,
-          bottomHeight: dock.bottomHeight,
+      const tabs = { ...dock.tabs };
+      const toolSides = { ...dock.toolSides };
+      for (const t of tools) {
+        if (!toolSides[t.id]) toolSides[t.id] = t.defaultSide ?? "center";
+      }
+      const iconOrder = normalizeIconOrder(dock.iconOrder, toolSides);
+      const sideTrees: Record<SideRegionId, LayoutNode | null> = {
+        left: dock.left,
+        right: dock.right,
+        bottom: dock.bottom,
+      };
+
+      // 侧边工具面板没有异步 createInstance，先建好可忽略；中心面板通常是终端，
+      // 需要等待远端分配 PTY（open_terminal），这也是此处耗时的主要来源。
+      const centerToolId = sideTool.center ?? "terminal";
+      const centerTab = await createTab(connectionId, centerToolId);
+      tabs[centerTab.id] = centerTab;
+      const center = createInitialLayout(centerTab.id);
+
+      for (const side of ["left", "right", "bottom"] as SideRegionId[]) {
+        if (sideTrees[side]) continue;
+        const toolId = sideTool[side];
+        if (toolId) {
+          const tab = await createTab(connectionId, toolId);
+          tabs[tab.id] = tab;
+          sideTrees[side] = createInitialLayout(tab.id);
+        }
+      }
+
+      set({
+        byConnection: {
+          ...get().byConnection,
+          [connectionId]: {
+            tabs,
+            left: sideTrees.left,
+            right: sideTrees.right,
+            bottom: sideTrees.bottom,
+            center,
+            toolSides,
+            iconOrder,
+            leftWidth: dock.leftWidth,
+            rightWidth: dock.rightWidth,
+            bottomHeight: dock.bottomHeight,
+          },
         },
-      },
-    });
+      });
+    } finally {
+      // 失败时也要释放，否则重试会被并发保护挡住。
+      initInFlight.delete(connectionId);
+      release();
+    }
   },
 
   openTab: async (connectionId, toolTypeId, region, meta, iconAnchor) => {
@@ -446,9 +481,9 @@ export const useDockStore = create<DockState>((set, get) => ({
     // 图标跟随面板：把工具开到哪一侧，它的活动栏图标就归属哪一侧。
     // 与 moveTabToRegion 保持一致，否则「拖未打开的图标到另一侧」只会开面板、图标不动。
     const toolSides = { ...dock.toolSides, [toolTypeId]: region };
-    // 拖到活动栏时按落点插入图标（iconAnchor 为空则追加到末尾）
+    // 拖到活动栏时按落点插入图标；纯点击打开（iconAnchor 为空）保持原顺序
     let iconOrder = normalizeIconOrder(dock.iconOrder, toolSides);
-    if (region === "left" || region === "right") {
+    if ((region === "left" || region === "right") && iconAnchor !== undefined) {
       iconOrder = placeIcon(iconOrder, region, toolTypeId, iconAnchor);
     }
     let tree = dock[region];
@@ -465,6 +500,26 @@ export const useDockStore = create<DockState>((set, get) => ({
       },
     });
     return tab.id;
+  },
+
+  openFileInEditor: async (connectionId, path, title) => {
+    const current = getDock(get(), connectionId);
+    // 同一个文件已经打开：直接聚焦，不关掉重开（避免重新拉取内容、丢滚动位置）。
+    for (const t of Object.values(current.tabs)) {
+      if (t.toolTypeId === "editor" && t.meta?.path === path) {
+        get().focusTab(connectionId, t.id);
+        return t.id;
+      }
+    }
+    // 关掉没有未保存改动的编辑器标签页（含空编辑器），避免标签页越开越多。
+    // 有改动的保留；closeTab 内部 await 后会重取快照，这里顺序调用不会互相覆盖。
+    const stale = Object.values(current.tabs).filter(
+      (t) => t.toolTypeId === "editor" && !t.dirty,
+    );
+    for (const t of stale) {
+      await get().closeTab(connectionId, t.id);
+    }
+    return get().openTab(connectionId, "editor", "center", { path, title });
   },
 
   splitInRegion: async (connectionId, region, paneId, toolTypeId, direction) => {

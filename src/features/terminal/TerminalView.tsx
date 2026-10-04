@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import { terminalService } from "../../services/terminalService";
@@ -158,7 +159,20 @@ export function TerminalView({ connectionId, terminalId, onExit }: TerminalViewP
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
-    term.loadAddon(new WebLinksAddon());
+    // 终端输出可能来自不可信的远端服务器：只允许打开 http(s) 链接，
+    // 并交给系统浏览器（opener 插件），而不是 webview 默认的 window.open。
+    term.loadAddon(
+      new WebLinksAddon((_event, uri) => {
+        try {
+          const { protocol } = new URL(uri);
+          if (protocol === "http:" || protocol === "https:") {
+            void openUrl(uri).catch(() => {});
+          }
+        } catch {
+          // 非法 URL，忽略
+        }
+      }),
+    );
     term.open(containerRef.current);
     fitAddon.fit();
     restoreBuffer(terminalId, term);

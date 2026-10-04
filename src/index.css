@@ -4,6 +4,12 @@
   --qookit-primary: #e89a4b;
   --accent: #e89a4b;
   --accent-foreground: #1a1208;
+  --field-border-width: 1px;
+  --field-border: var(--border);
+}
+
+.dark {
+  --field-border: oklch(42% 0.006 286.033);
 }
 
 html,
@@ -17,6 +23,10 @@ body,
 
 #root {
   overflow: hidden;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
 }
 
 ::-webkit-scrollbar {

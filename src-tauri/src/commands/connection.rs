@@ -78,6 +78,25 @@ pub async fn cancel_connect(state: State<'_, AppState>, host_id: String) -> AppR
     if let Some(token) = state.connecting.lock().await.remove(&host_id) {
         token.cancel();
     }
+    // 一并撤销该主机待确认的首次连接主机密钥，避免前端对话框残留。
+    let mut pending = state.pending_host_keys.lock().await;
+    pending.retain(|_, p| p.host_id != host_id);
+    Ok(())
+}
+
+/// 回应用户对「首次连接主机密钥」的确认结果。
+///
+/// `accepted` 为 `true` 时后端会记录该主机密钥并继续连接，否则中止连接。
+#[tauri::command]
+pub async fn respond_host_key(
+    state: State<'_, AppState>,
+    request_id: String,
+    accepted: bool,
+) -> AppResult<()> {
+    let pending = state.pending_host_keys.lock().await.remove(&request_id);
+    if let Some(p) = pending {
+        let _ = p.responder.send(accepted);
+    }
     Ok(())
 }
 
@@ -109,8 +128,24 @@ pub async fn disconnect_host(
     Ok(())
 }
 
+/// 校验来自前端的 host/port 参数，避免空白、控制字符等异常输入。
+fn validate_host_port(host: &str, port: u16) -> AppResult<()> {
+    let trimmed = host.trim();
+    if trimmed.is_empty() || trimmed.len() > 253 {
+        return Err(AppError::Other("主机名无效".into()));
+    }
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(AppError::Other("主机名包含非法字符".into()));
+    }
+    if port == 0 {
+        return Err(AppError::Other("端口无效".into()));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn ping_host(host: String, port: u16) -> AppResult<u64> {
+    validate_host_port(&host, port)?;
     let start = std::time::Instant::now();
     match tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -127,6 +162,7 @@ pub async fn ping_host(host: String, port: u16) -> AppResult<u64> {
 /// 该主机已记录的主机密钥（`算法 指纹`）。
 #[tauri::command]
 pub async fn known_host_fingerprints(host: String, port: u16) -> AppResult<Vec<String>> {
+    validate_host_port(&host, port)?;
     crate::ssh::host_key::recorded(&host, port)
 }
 
@@ -135,5 +171,6 @@ pub async fn known_host_fingerprints(host: String, port: u16) -> AppResult<Vec<S
 /// 仅在服务器确实更换了密钥、需要重新建立信任时使用。
 #[tauri::command]
 pub async fn forget_host_key(host: String, port: u16) -> AppResult<usize> {
+    validate_host_port(&host, port)?;
     crate::ssh::host_key::forget(&host, port)
 }

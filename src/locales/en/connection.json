@@ -1,6 +1,8 @@
 {
   "center_title": "Connection Center",
   "server_count": "{{count}} servers",
+  "all_connections": "All",
+  "search_placeholder": "Search servers...",
   "ping_all": "Ping All",
   "add_server": "Add Server",
   "hide_address": "Hide address",
@@ -8,6 +10,7 @@
   "no_servers": "No servers yet",
   "no_servers_hint": "Click \"Add Server\" in the top right to start",
   "connected": "Connected",
+  "cpu_cores": "{{count}} cores",
   "password_auth": "Password",
   "key_auth": "Key",
   "connect": "Connect",
@@ -19,6 +22,7 @@
   "latency_testing": "Testing...",
   "latency_unreachable": "Unreachable",
   "confirm_delete": "Delete server {{name}}?",
+  "confirm_delete_group": "Delete group {{name}}? Servers in this group will become ungrouped.",
   "no_host_key": "No host key record",
   "no_host_key_msg": "{{host}}:{{port}} has no recorded host key. It will be recorded on first connection.",
   "clear_host_key_title": "Clear host key record",
@@ -53,5 +57,17 @@
   "key_empty": "Key content cannot be empty. Paste the key or click \"Read\" to choose a file",
   "file_empty": "The selected file is empty",
   "read_key_failed": "Failed to read key: {{error}}",
-  "key_file_filter": "Private key file"
+  "key_file_filter": "Private key file",
+  "group": "Group",
+  "group_placeholder": "Enter group name (leave empty for no group)",
+  "ungrouped": "Ungrouped",
+  "new_group": "New Group",
+  "new_group_prompt": "Enter group name",
+  "password_empty": "Password cannot be empty",
+  "credential_keep_hint": "Leave blank to keep the saved credential",
+  "host_key_verify_title": "Verify Server Host Key",
+  "host_key_verify_msg": "First connection to {{host}}:{{port}}. Check the fingerprint below with your server administrator before trusting it.",
+  "host_key_verify_hint": "If the fingerprint does not match, a man-in-the-middle attack is possible — choose \"Reject\". Once trusted, the key is recorded to ~/.ssh/known_hosts.",
+  "host_key_accept": "Trust and Connect",
+  "host_key_reject": "Reject"
 }

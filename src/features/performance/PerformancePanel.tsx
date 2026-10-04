@@ -120,9 +120,6 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
         <div className="flex items-center gap-2">
           <Activity size={15} className="text-accent" />
           <span className="text-xs font-medium text-foreground">{t("title")}</span>
-          {sample && (
-            <span className="text-xs text-muted">· {sample.hostname}</span>
-          )}
         </div>
         <div className="flex items-center gap-1">
           <div className="flex items-center gap-0.5 rounded-md border border-border/50 bg-default-soft p-0.5">

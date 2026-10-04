@@ -15,7 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["image-png"] }
+tauri = { version = "2", features = ["image-png", "tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -51,6 +51,13 @@ chrono = { version = "0.4", features = ["serde"] }
 # 版本与 tauri/tao 已在依赖树中的 windows 0.62 保持一致，避免重复编译
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Services_Store", "Win32_System_WinRT"] }
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["sync-secret-service"] }
 
 # 发布配置：thin LTO + 多 codegen 单元，兼顾体积与 CI 编译速度
 # 参考 https://tauri.app/concept/size/#cargo-configuration （原 fat LTO+codegen-units=1 体积最优但编译极慢）

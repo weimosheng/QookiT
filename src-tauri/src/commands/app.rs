@@ -29,3 +29,10 @@ pub async fn install_store_updates() -> AppResult<StoreUpdateInstall> {
         .await
         .map_err(|e| crate::error::AppError::Other(format!("更新安装任务异常：{e}")))?
 }
+
+/// 强制退出整个应用，跳过窗口关闭拦截。
+#[tauri::command]
+pub fn force_quit(app: tauri::AppHandle) {
+    crate::FORCE_QUIT.store(true, std::sync::atomic::Ordering::SeqCst);
+    app.exit(0);
+}

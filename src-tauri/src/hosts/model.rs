@@ -1,6 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SystemInfo {
+    pub os: Option<String>,
+    pub system: Option<String>,
+    pub kernel: Option<String>,
+    pub arch: Option<String>,
+    pub cpu_cores: Option<u32>,
+    pub mem_total_mb: Option<u64>,
+    pub mem_available_mb: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Host {
     pub id: String,
     pub name: String,
@@ -10,6 +21,7 @@ pub struct Host {
     pub auth: AuthMethod,
     pub group: Option<String>,
     pub initial_dir: Option<String>,
+    pub system_info: Option<SystemInfo>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -37,6 +49,7 @@ impl Host {
             auth,
             group: None,
             initial_dir: None,
+            system_info: None,
             created_at: now,
             updated_at: now,
         }

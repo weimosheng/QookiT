@@ -32,7 +32,7 @@ import "./registerTools";
 import { useDragStore, type DragInfo } from "./dragStore";
 import { cn } from "../../lib/cn";
 import { dialogAlert } from "../../lib/dialog";
-import { Terminal, Plus, LayoutGrid, Save, Trash2, RotateCcw, Download, Upload } from "lucide-react";
+import { Terminal, Plus, LayoutGrid, Save, Trash2, RotateCcw, Download, Upload, Loader2, AlertTriangle } from "lucide-react";
 import { useLayoutStore, createDefaultTemplate, type LayoutTemplate } from "./layoutStore";
 import { createPortal } from "react-dom";
 import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -59,6 +59,10 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const dropTargetRef = useRef<DropTarget | null>(null);
+  /** 工作区初始化失败信息（为空表示正常/初始化中）。 */
+  const [initError, setInitError] = useState<string | null>(null);
+  /** 递增以触发重新初始化（失败后点「重试」）。 */
+  const [initNonce, setInitNonce] = useState(0);
 
   /** 在指定区域打开一个尚未打开的工具（拖活动栏图标时使用）。 */
   const openTool = useCallback(
@@ -72,9 +76,19 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
   );
 
   useEffect(() => {
-    void ensureInit(connectionId);
+    let cancelled = false;
+    setInitError(null);
+    // ensureInit 需要等中心面板（终端）在远端分配完 PTY 才能建好布局，
+    // 期间 dock 为空——用加载占位兜住这段空白，并捕获失败以便重试。
+    void ensureInit(connectionId).catch((e) => {
+      if (cancelled) return;
+      setInitError(e instanceof Error ? e.message : String(e));
+    });
     void useLayoutStore.getState().init();
-  }, [connectionId, ensureInit]);
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, ensureInit, initNonce]);
 
   useLayoutEffect(() => {
     if (!drag || drag.connectionId !== connectionId) return;
@@ -224,7 +238,12 @@ export function DockWorkspace({ connectionId }: DockWorkspaceProps) {
   }, [drag, dock, connectionId, clearDrag, openTool, moveTabToPane, dropOnEdge, moveTabToRegion, reorderIcon, dropOnTab]);
 
   if (!dock) {
-    return <div className="h-full w-full" />;
+    return (
+      <WorkspaceLoading
+        error={initError}
+        onRetry={() => setInitNonce((n) => n + 1)}
+      />
+    );
   }
 
   return (
@@ -428,6 +447,53 @@ function SplitResizer({
         direction === "horizontal" ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize",
       )}
     />
+  );
+}
+
+/**
+ * 工作区初始化中的占位。
+ *
+ * 打开连接标签页时需要等 `ensureInit` 建好布局（中心面板通常是终端，要在远端
+ * 分配 PTY），这段时间 `dock` 为空。这里给出加载反馈，失败时提供重试入口。
+ */
+function WorkspaceLoading({
+  error,
+  onRetry,
+}: {
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation("dock");
+  const { t: tc } = useTranslation("common");
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3 text-muted">
+        {error ? (
+          <>
+            <AlertTriangle size={28} className="text-danger opacity-70" />
+            <span className="text-sm text-foreground">
+              {t("workspace_init_failed")}
+            </span>
+            <span className="max-w-md text-center text-xs opacity-70">
+              {error}
+            </span>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs text-accent-foreground hover:opacity-90"
+            >
+              <RotateCcw size={14} />
+              {tc("retry")}
+            </button>
+          </>
+        ) : (
+          <>
+            <Loader2 size={24} className="animate-spin text-accent" />
+            <span className="text-sm">{t("workspace_loading")}</span>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

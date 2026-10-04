@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_SHORTCUTS } from "../lib/shortcutDefaults";
 
+export type CloseAction = "ask" | "close" | "minimizeToTray";
+
 export interface SettingsValues {
   terminalFontFamily: string;
   terminalFontSize: number;
@@ -18,6 +20,8 @@ export interface SettingsValues {
   hiddenTools: string[];
   /** 动作 ID → 组合键字符串；空串表示未绑定 */
   shortcuts: Record<string, string>;
+  /** 关闭窗口时的行为：询问 / 直接关闭 / 最小化到托盘 */
+  closeAction: CloseAction;
 }
 
 export interface SettingsState extends SettingsValues {
@@ -38,6 +42,7 @@ const DEFAULTS: SettingsValues = {
   defaultUsername: "root",
   hiddenTools: [],
   shortcuts: { ...DEFAULT_SHORTCUTS },
+  closeAction: "ask",
 };
 
 export const useSettingsStore = create<SettingsState>()(

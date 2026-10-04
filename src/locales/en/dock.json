@@ -25,5 +25,7 @@
   "tool_transfer": "Transfer Queue",
   "file_title": "Files",
   "command_title": "Command",
-  "transfer_title": "Transfer"
+  "transfer_title": "Transfer",
+  "workspace_loading": "Preparing workspace…",
+  "workspace_init_failed": "Failed to open workspace"
 }

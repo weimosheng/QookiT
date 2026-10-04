@@ -15,6 +15,7 @@ import zhPerformance from "../locales/zh/performance.json";
 import zhTransfer from "../locales/zh/transfer.json";
 import zhDock from "../locales/zh/dock.json";
 import zhShortcut from "../locales/zh/shortcut.json";
+import zhCloseDialog from "../locales/zh/closeDialog.json";
 
 import enCommon from "../locales/en/common.json";
 import enTitlebar from "../locales/en/titlebar.json";
@@ -30,6 +31,7 @@ import enPerformance from "../locales/en/performance.json";
 import enTransfer from "../locales/en/transfer.json";
 import enDock from "../locales/en/dock.json";
 import enShortcut from "../locales/en/shortcut.json";
+import enCloseDialog from "../locales/en/closeDialog.json";
 
 export const SUPPORTED_LOCALES = ["zh", "en"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -51,6 +53,7 @@ const resources = {
     transfer: zhTransfer,
     dock: zhDock,
     shortcut: zhShortcut,
+    closeDialog: zhCloseDialog,
   },
   en: {
     common: enCommon,
@@ -67,6 +70,7 @@ const resources = {
     transfer: enTransfer,
     dock: enDock,
     shortcut: enShortcut,
+    closeDialog: enCloseDialog,
   },
 };
 

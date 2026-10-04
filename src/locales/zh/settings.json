@@ -60,5 +60,10 @@
   "tech_stack": "技术栈",
   "backend_stack": "后端 Rust · russh · russh-sftp",
   "frontend_stack": "前端 Vite · Tailwind CSS v4",
+  "close_action": "关闭按钮行为",
+  "close_action_hint": "点击关闭按钮时的默认行为",
+  "close_action_ask": "每次询问",
+  "close_action_close": "直接关闭",
+  "close_action_minimize": "最小化到托盘",
   "done": "完成"
 }

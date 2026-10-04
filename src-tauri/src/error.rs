@@ -20,6 +20,8 @@ pub enum AppError {
     Crypto(String),
     #[error("主机未找到: {0}")]
     HostNotFound(String),
+    #[error("分组未找到: {0}")]
+    GroupNotFound(String),
     #[error("连接已取消")]
     Cancelled,
     #[error("{0}")]

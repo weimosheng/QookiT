@@ -22,6 +22,22 @@ export const TERMINAL_EXIT_EVENT = "terminal:exit";
 export const CONNECTION_LOG_EVENT = "connection:log";
 export const FILE_READ_PROGRESS_EVENT = "file:read_progress";
 export const FILE_TRANSFER_PROGRESS_EVENT = "file:transfer_progress";
+/** 首次连接：后端请求用户核对并确认服务器主机密钥（TOFU）。 */
+export const HOST_KEY_VERIFY_EVENT = "host-key:verify";
+/** 该确认请求已结束，前端据此关闭对话框。 */
+export const HOST_KEY_VERIFY_DONE_EVENT = "host-key:verify-done";
+
+export interface HostKeyVerifyPayload {
+  request_id: string;
+  host: string;
+  port: number;
+  algorithm: string;
+  fingerprint: string;
+}
+
+export interface HostKeyVerifyDonePayload {
+  request_id: string;
+}
 
 export interface FileReadProgressPayload {
   connection_id: string;
