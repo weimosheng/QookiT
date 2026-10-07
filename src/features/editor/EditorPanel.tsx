@@ -553,7 +553,7 @@ export function EditorPanel({ connectionId, instanceId, path }: EditorPanelProps
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <div className="flex h-8 flex-shrink-0 items-center gap-2 border-b border-border px-2 text-xs">
+      <div className="flex h-8 flex-shrink-0 items-center gap-2 border-b border-border/50 bg-background/60 px-3 backdrop-blur-md text-xs">
         <FileCode size={13} className="flex-shrink-0 text-accent" />
         <span className="min-w-0 flex-1 truncate text-muted" title={path}>
           {path}

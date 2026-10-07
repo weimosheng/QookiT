@@ -22,6 +22,7 @@ export const TERMINAL_EXIT_EVENT = "terminal:exit";
 export const CONNECTION_LOG_EVENT = "connection:log";
 export const FILE_READ_PROGRESS_EVENT = "file:read_progress";
 export const FILE_TRANSFER_PROGRESS_EVENT = "file:transfer_progress";
+export const FORWARD_STATE_EVENT = "forward:state";
 /** 首次连接：后端请求用户核对并确认服务器主机密钥（TOFU）。 */
 export const HOST_KEY_VERIFY_EVENT = "host-key:verify";
 /** 该确认请求已结束，前端据此关闭对话框。 */
@@ -54,5 +55,15 @@ export interface FileTransferProgressPayload {
   transferred: number;
   total: number;
   status: "active" | "done" | "error";
+  error: string | null;
+}
+
+export interface ForwardStatePayload {
+  connection_id: string;
+  forward_id: string;
+  status: "starting" | "active" | "error" | "stopped";
+  bound_port: number;
+  bytes_in: number;
+  bytes_out: number;
   error: string | null;
 }

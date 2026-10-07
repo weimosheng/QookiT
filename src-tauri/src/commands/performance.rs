@@ -28,6 +28,7 @@ pub struct PerformanceSample {
     pub cpu_cores: u32,
     pub cpu_model: String,
     pub cpu_usage: f32,
+    pub cpu_per_core: Vec<f32>,
     pub mem_total: u64,
     pub mem_used: u64,
     pub mem_available: u64,
@@ -52,14 +53,20 @@ LA=$(awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null || echo "0 0 0")
 CC=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)
 CM=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | sed 's/.*: //' || echo unknown)
 [ -z "$CM" ] && CM=unknown
-C1=$(head -n1 /proc/stat 2>/dev/null)
+S1=$(grep '^cpu' /proc/stat 2>/dev/null)
 sleep 1
-C2=$(head -n1 /proc/stat 2>/dev/null)
-CU=$(awk -v c1="$C1" -v c2="$C2" 'BEGIN{
-  split(c1,a," "); split(c2,b," ");
+S2=$(grep '^cpu' /proc/stat 2>/dev/null)
+CU=$(awk -v s1="$S1" -v s2="$S2" 'BEGIN{
+  split(s1,l1,"\n"); split(l1[1],a," ");
+  split(s2,l2,"\n"); split(l2[1],b," ");
   u1=a[2]+a[3]+a[4]; u2=b[2]+b[3]+b[4];
   t1=a[2]+a[3]+a[4]+a[5]; t2=b[2]+b[3]+b[4]+b[5];
   if (t2-t1>0) printf "%.1f", 100*(u2-u1)/(t2-t1); else print "0";
+}')
+CUPC=$(awk -v s1="$S1" -v s2="$S2" -v cc="$CC" 'BEGIN{
+  n1=split(s1,l1,"\n"); for(i=1;i<=n1;i++){split(l1[i],f," "); n=f[1]; u1[n]=f[2]+f[3]+f[4]; t1[n]=f[2]+f[3]+f[4]+f[5];}
+  n2=split(s2,l2,"\n"); for(i=1;i<=n2;i++){split(l2[i],f," "); n=f[1]; u2[n]=f[2]+f[3]+f[4]; t2[n]=f[2]+f[3]+f[4]+f[5];}
+  out=""; for(i=0;i<cc;i++){n="cpu"i; if(t2[n]-t1[n]>0) p=100*(u2[n]-u1[n])/(t2[n]-t1[n]); else p=0; if(out!="") out=out" "; out=out sprintf("%.1f",p);} print out;
 }')
 MT=$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
 MA=$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
@@ -79,6 +86,7 @@ printf 'LOADAVG\t%s\n' "$LA"
 printf 'CPUCORES\t%s\n' "$CC"
 printf 'CPUMODEL\t%s\n' "$CM"
 printf 'CPUUSAGE\t%s\n' "$CU"
+printf 'CPUPERCORE\t%s\n' "$CUPC"
 printf 'MEMTOTAL\t%s\n' "$MT"
 printf 'MEMUSED\t%s\n' "$MU"
 printf 'MEMAVAIL\t%s\n' "$MA"
@@ -109,6 +117,7 @@ fn parse_sample(stdout: &str) -> AppResult<PerformanceSample> {
     let mut cpu_cores: u32 = 1;
     let mut cpu_model = String::from("unknown");
     let mut cpu_usage: f32 = 0.0;
+    let mut cpu_per_core: Vec<f32> = Vec::new();
     let mut mem_total: u64 = 0;
     let mut mem_used: u64 = 0;
     let mut mem_available: u64 = 0;
@@ -141,6 +150,12 @@ fn parse_sample(stdout: &str) -> AppResult<PerformanceSample> {
             "CPUCORES" if parts.len() > 1 => cpu_cores = parts[1].parse().unwrap_or(1),
             "CPUMODEL" if parts.len() > 1 => cpu_model = parts[1].to_string(),
             "CPUUSAGE" if parts.len() > 1 => cpu_usage = parts[1].parse().unwrap_or(0.0),
+            "CPUPERCORE" if parts.len() > 1 => {
+                cpu_per_core = parts[1]
+                    .split_whitespace()
+                    .map(|s| s.parse().unwrap_or(0.0))
+                    .collect();
+            }
             "MEMTOTAL" if parts.len() > 1 => mem_total = parts[1].parse().unwrap_or(0) * 1024,
             "MEMUSED" if parts.len() > 1 => mem_used = parts[1].parse().unwrap_or(0) * 1024,
             "MEMAVAIL" if parts.len() > 1 => mem_available = parts[1].parse().unwrap_or(0) * 1024,
@@ -178,6 +193,7 @@ fn parse_sample(stdout: &str) -> AppResult<PerformanceSample> {
         cpu_cores,
         cpu_model,
         cpu_usage,
+        cpu_per_core,
         mem_total,
         mem_used,
         mem_available,

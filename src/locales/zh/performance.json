@@ -14,6 +14,8 @@
   "processes": "进程数",
   "cpu": "CPU",
   "cpu_cores": "{{cores}} 核 · {{model}}",
+  "cpu_summary": "{{cores}} 核 · 平均 {{avg}}% · 最高 {{max}}%",
+  "cpu_collapse": "收起核心详情",
   "memory": "内存",
   "mem_available": "可用",
   "mem_cached": "缓存",

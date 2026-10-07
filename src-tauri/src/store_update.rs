@@ -11,9 +11,15 @@
 use crate::error::{AppError, AppResult};
 
 #[cfg(target_os = "windows")]
+use windows::core::Interface;
+#[cfg(target_os = "windows")]
 use windows::Services::Store::{StoreContext, StorePackageUpdateState};
 #[cfg(target_os = "windows")]
-use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
+use windows::Win32::Foundation::HWND;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_SINGLETHREADED};
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::Shell::IInitializeWithWindow;
 
 /// 更新检查结果。
 #[derive(Debug, Clone, serde::Serialize)]
@@ -51,21 +57,49 @@ fn store_err(e: windows::core::Error) -> AppError {
     AppError::Other(format!("Microsoft Store 接口调用失败：{e}"))
 }
 
-/// `StoreContext` 是 WinRT 对象，调用前线程必须已初始化 COM/WinRT 公寓。
-/// 调用方在阻塞线程上执行，无需消息泵，因此统一使用 MTA。
+/// 在专用 STA 线程上运行 Store 操作。
+///
+/// `StoreContext` 的 API（尤其 `RequestDownloadAndInstallStorePackageUpdatesAsync`）必须
+/// 在带窗口句柄的 UI/STA 线程上调用，否则报 `0x80070578`（必须从 UI 线程调用）。
+/// 桌面 Win32/MSIX 桥应用须用 `GetForWindow(hwnd, ...)` 把窗口句柄显式绑定到 context
+/// （而非 `GetDefault()`，后者仅 UWP 可用）。STA 上用 `.get()` 阻塞等待，其内部跑消息泵，
+/// 能处理商店弹出的下载/安装 UI 对话框；若用 `.join()` 不跑消息泵会卡死。
+///
+/// 专用线程避免在 tokio 线程池线程上 `RoInitialize(STA)` —— 线程池线程可能已被其他任务
+/// 以 MTA 初始化，再初始化 STA 会返回 `RPC_E_CHANGED_MODE` 失败。
 #[cfg(target_os = "windows")]
-fn with_mta<T>(task: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
-    // 已初始化会返回 S_FALSE、公寓模式冲突会返回 RPC_E_CHANGED_MODE，两种情况都无需处理；
-    // 该线程来自线程池，不做 RoUninitialize，避免后续调用重复初始化。
-    let _ = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
-    task()
+fn run_on_sta<T>(
+    hwnd: isize,
+    task: impl FnOnce(HWND) -> AppResult<T> + Send + 'static,
+) -> AppResult<T>
+where
+    T: Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel::<AppResult<T>>();
+    std::thread::Builder::new()
+        .name("store-update".into())
+        .spawn(move || {
+            let result = (|| {
+                // STA 初始化；已初始化返回 S_FALSE，忽略。线程退出时 OS 自动清理公寓。
+                let _ = unsafe { RoInitialize(RO_INIT_SINGLETHREADED) };
+                task(HWND(hwnd as *mut std::ffi::c_void))
+            })();
+            let _ = tx.send(result);
+        })
+        .map_err(|e| AppError::Other(format!("无法启动 Store 线程：{e}")))?;
+    rx.recv()
+        .map_err(|e| AppError::Other(format!("Store 线程异常：{e}")))?
 }
 
 /// 查询商店是否有可用更新。
 #[cfg(target_os = "windows")]
-pub fn check() -> AppResult<StoreUpdateCheck> {
-    with_mta(|| {
+pub fn check(hwnd: isize) -> AppResult<StoreUpdateCheck> {
+    run_on_sta(hwnd, |hwnd| {
         let context = StoreContext::GetDefault().map_err(store_err)?;
+        // 桌面桥应用须把窗口句柄绑给 context，否则弹 UI 的 API 报 0x80070578
+        if let Ok(init) = context.cast::<IInitializeWithWindow>() {
+            let _ = unsafe { init.Initialize(hwnd) };
+        }
         let updates = context
             .GetAppAndOptionalStorePackageUpdatesAsync()
             .map_err(store_err)?
@@ -91,9 +125,13 @@ pub fn check() -> AppResult<StoreUpdateCheck> {
 
 /// 交给 Microsoft Store 下载并安装更新（阻塞直到商店完成或取消）。
 #[cfg(target_os = "windows")]
-pub fn install() -> AppResult<StoreUpdateInstall> {
-    with_mta(|| {
+pub fn install(hwnd: isize) -> AppResult<StoreUpdateInstall> {
+    run_on_sta(hwnd, |hwnd| {
         let context = StoreContext::GetDefault().map_err(store_err)?;
+        // 桌面桥应用须把窗口句柄绑给 context，否则弹 UI 的 API 报 0x80070578
+        if let Ok(init) = context.cast::<IInitializeWithWindow>() {
+            let _ = unsafe { init.Initialize(hwnd) };
+        }
         let updates = context
             .GetAppAndOptionalStorePackageUpdatesAsync()
             .map_err(store_err)?
@@ -130,14 +168,14 @@ pub fn install() -> AppResult<StoreUpdateInstall> {
 
 /// 非 Windows 平台没有 Microsoft Store 通道。
 #[cfg(not(target_os = "windows"))]
-pub fn check() -> AppResult<StoreUpdateCheck> {
+pub fn check(_hwnd: isize) -> AppResult<StoreUpdateCheck> {
     Err(AppError::Other(
         "Microsoft Store 更新仅适用于 Windows 版本".to_string(),
     ))
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn install() -> AppResult<StoreUpdateInstall> {
+pub fn install(_hwnd: isize) -> AppResult<StoreUpdateInstall> {
     Err(AppError::Other(
         "Microsoft Store 更新仅适用于 Windows 版本".to_string(),
     ))

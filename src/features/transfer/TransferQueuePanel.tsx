@@ -63,7 +63,7 @@ export function TransferQueuePanel({ connectionId }: TransferQueuePanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-3 py-1.5 text-xs text-muted">
+      <div className="flex items-center justify-between border-b border-border/50 bg-background/60 px-3 py-2 backdrop-blur-md text-xs text-muted">
         <span>{t("task_count", { count: tasks.length })}</span>
         {hasDone && (
           <button

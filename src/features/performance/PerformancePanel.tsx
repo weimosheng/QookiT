@@ -13,11 +13,14 @@ import {
   RefreshCw,
   AlertCircle,
   Layers,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { performanceService } from "../../services/performanceService";
 import type { PerformanceSample } from "../../types/performance";
 import { PerformanceChart } from "./PerformanceChart";
 import { cn } from "../../lib/cn";
+import { PanelHeader, panelHeaderBtnClass } from "../../components/PanelHeader";
 import i18n from "../../lib/i18n";
 
 interface PerformancePanelProps {
@@ -25,6 +28,7 @@ interface PerformancePanelProps {
 }
 
 const MAX_HISTORY = 60;
+const CORE_FOLD_THRESHOLD = 8;
 const INTERVAL_OPTIONS = [
   { label: "1s", value: 1000 },
   { label: "2s", value: 2000 },
@@ -116,47 +120,41 @@ export function PerformancePanel({ connectionId }: PerformancePanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border/50 bg-background/60 px-3 py-2 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <Activity size={15} className="text-accent" />
-          <span className="text-xs font-medium text-foreground">{t("title")}</span>
+      <PanelHeader icon={Activity} title={t("title")}>
+        <div className="flex items-center gap-0.5 rounded-md border border-border/50 bg-default-soft p-0.5">
+          {INTERVAL_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setIntervalMs(opt.value)}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] transition-colors",
+                intervalMs === opt.value
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-0.5 rounded-md border border-border/50 bg-default-soft p-0.5">
-            {INTERVAL_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setIntervalMs(opt.value)}
-                className={cn(
-                  "rounded px-1.5 py-0.5 text-[10px] transition-colors",
-                  intervalMs === opt.value
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            title={paused ? t("resume") : t("pause")}
-            onClick={() => setPaused((p) => !p)}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-default-soft hover:text-foreground"
-          >
-            {paused ? <Play size={13} /> : <Pause size={13} />}
-          </button>
-          <button
-            type="button"
-            title={t("refresh_now")}
-            onClick={() => fetchOnce(false)}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-default-soft hover:text-foreground"
-          >
-            <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
-          </button>
-        </div>
-      </div>
+        <button
+          type="button"
+          title={paused ? t("resume") : t("pause")}
+          onClick={() => setPaused((p) => !p)}
+          className={panelHeaderBtnClass}
+        >
+          {paused ? <Play size={13} /> : <Pause size={13} />}
+        </button>
+        <button
+          type="button"
+          title={t("refresh_now")}
+          onClick={() => fetchOnce(false)}
+          className={panelHeaderBtnClass}
+        >
+          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+        </button>
+      </PanelHeader>
 
       {error && (
         <div className="flex items-center gap-2 border-b border-danger/30 bg-danger/10 px-3 py-1.5">
@@ -246,6 +244,8 @@ function CpuCard({
   history: number[];
 }) {
   const { t } = useTranslation("performance");
+  const perCore = sample.cpu_per_core;
+  const [expanded, setExpanded] = useState(perCore.length <= CORE_FOLD_THRESHOLD);
   return (
     <Card icon={Cpu} title={t("cpu")}>
       <div className="mb-2 flex items-baseline gap-2">
@@ -258,6 +258,42 @@ function CpuCard({
         </span>
       </div>
       <PerformanceChart data={history} max={100} height={56} />
+      {perCore.length > 0 && (
+        <div className="mt-2">
+          {perCore.length > CORE_FOLD_THRESHOLD && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mb-1 flex items-center gap-1 text-[10px] text-muted transition-colors hover:text-foreground"
+            >
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {expanded
+                ? t("cpu_collapse")
+                : t("cpu_summary", {
+                    cores: perCore.length,
+                    avg: (perCore.reduce((a, b) => a + b, 0) / perCore.length).toFixed(1),
+                    max: Math.max(...perCore).toFixed(1),
+                  })}
+            </button>
+          )}
+          {expanded && (
+            <div className="space-y-0.5">
+              {perCore.map((u, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="w-4 text-right text-[9px] tabular-nums text-muted">{i}</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-default-soft">
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{ width: `${u}%` }}
+                    />
+                  </div>
+                  <span className="w-7 text-right text-[9px] tabular-nums text-muted">{u.toFixed(0)}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

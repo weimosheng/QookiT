@@ -1,6 +1,8 @@
 //! 运行环境相关的只读命令。
 
-use crate::error::AppResult;
+use tauri::Manager;
+
+use crate::error::{AppError, AppResult};
 use crate::packaging;
 use crate::store_update::{self, StoreUpdateCheck, StoreUpdateInstall};
 
@@ -12,22 +14,37 @@ pub fn is_store_packaged() -> bool {
     packaging::is_store_managed()
 }
 
+/// 取主窗口 HWND（转 isize 解耦 tauri 与项目 windows crate 的版本）。
+///
+/// `StoreContext::GetForWindow` 必须传窗口句柄，否则商店 API 报 `0x80070578`。
+fn main_hwnd(app: &tauri::AppHandle) -> AppResult<isize> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| AppError::Other("主窗口未找到".into()))?;
+    let hwnd = win
+        .hwnd()
+        .map_err(|e| AppError::Other(format!("获取窗口句柄失败：{e}")))?;
+    Ok(hwnd.0 as isize)
+}
+
 /// 通过 Microsoft Store 官方接口查询是否有可用更新。
 ///
-/// `StoreContext` 是阻塞调用（内部等待 WinRT 异步操作完成），因此放到阻塞线程执行。
+/// `StoreContext` 必须在带窗口句柄的 STA 线程上调用，内部起专用线程执行。
 #[tauri::command]
-pub async fn check_store_updates() -> AppResult<StoreUpdateCheck> {
-    tauri::async_runtime::spawn_blocking(store_update::check)
+pub async fn check_store_updates(app: tauri::AppHandle) -> AppResult<StoreUpdateCheck> {
+    let hwnd = main_hwnd(&app)?;
+    tauri::async_runtime::spawn_blocking(move || store_update::check(hwnd))
         .await
-        .map_err(|e| crate::error::AppError::Other(format!("更新检查任务异常：{e}")))?
+        .map_err(|e| AppError::Other(format!("更新检查任务异常：{e}")))?
 }
 
 /// 交给 Microsoft Store 下载并安装更新（仅商店安装且已上架的版本可用）。
 #[tauri::command]
-pub async fn install_store_updates() -> AppResult<StoreUpdateInstall> {
-    tauri::async_runtime::spawn_blocking(store_update::install)
+pub async fn install_store_updates(app: tauri::AppHandle) -> AppResult<StoreUpdateInstall> {
+    let hwnd = main_hwnd(&app)?;
+    tauri::async_runtime::spawn_blocking(move || store_update::install(hwnd))
         .await
-        .map_err(|e| crate::error::AppError::Other(format!("更新安装任务异常：{e}")))?
+        .map_err(|e| AppError::Other(format!("更新安装任务异常：{e}")))?
 }
 
 /// 强制退出整个应用，跳过窗口关闭拦截。

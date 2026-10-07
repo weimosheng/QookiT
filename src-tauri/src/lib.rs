@@ -123,11 +123,12 @@ pub fn run() {
                 .icon(tray_icon)
                 .menu(&menu)
                 .tooltip("QookiT")
-                .show_menu_on_left_click(true)
+                .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::DoubleClick { .. } = event {
                         let app = tray.app_handle();
                         if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.unminimize();
                             let _ = win.show();
                             let _ = win.set_focus();
                         }
@@ -197,8 +198,31 @@ pub fn run() {
             commands::sftp::sftp_write_file,
             commands::sftp::sftp_canonicalize,
             commands::sftp::ssh_exec,
+            commands::forward::forward_add,
+            commands::forward::forward_remove,
+            commands::forward::forward_list,
             commands::system_info::get_system_info,
             commands::performance::performance_sample,
+            commands::systemd::systemd_list_units,
+            commands::systemd::systemd_unit_status,
+            commands::systemd::systemd_start,
+            commands::systemd::systemd_stop,
+            commands::systemd::systemd_restart,
+            commands::systemd::systemd_enable,
+            commands::systemd::systemd_disable,
+            commands::systemd::systemd_get_logs,
+            commands::systemd::systemd_cat_unit,
+            commands::systemd::systemd_create_unit,
+            commands::cron::cron_list_jobs,
+            commands::cron::cron_get_crontab_raw,
+            commands::cron::cron_set_crontab_raw,
+            commands::cron::cron_get_logs,
+            commands::cron::cron_list_system_files,
+            commands::cron::cron_get_system_file,
+            commands::cron::cron_write_system_file,
+            commands::cron::cron_remove_system_file,
+            commands::cron::cron_get_job_logs,
+            commands::cron::cron_run_job,
             commands::layout::read_layout_templates,
             commands::layout::write_layout_templates,
         ])

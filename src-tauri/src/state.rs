@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::error::{AppError, AppResult};
 use crate::groups::GroupStore;
 use crate::hosts::HostStore;
-use crate::ssh::{Connection, SftpManager, TerminalChannel};
+use crate::ssh::{Connection, ForwardManager, SftpManager, TerminalChannel};
 
 /// 等待用户确认的首次连接主机密钥。
 pub struct PendingHostKey {
@@ -26,6 +26,8 @@ pub struct ConnectionEntry {
     /// `SftpSession` 的方法都只借用 `&self`（内部按请求 id 复用通道），可以并发调用。
     pub sftp: Arc<RwLock<Option<Arc<SftpManager>>>>,
     pub terminals: Arc<Mutex<HashMap<String, TerminalChannel>>>,
+    /// 该连接下的端口转发管理器。
+    pub forwards: Arc<Mutex<ForwardManager>>,
 }
 
 pub struct AppState {

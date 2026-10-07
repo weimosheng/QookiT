@@ -6,6 +6,9 @@ import { CommandPalette } from "../command/CommandPalette";
 import { PerformancePanel } from "../performance/PerformancePanel";
 import { EditorPanel } from "../editor/EditorPanel";
 import { TransferQueuePanel } from "../transfer/TransferQueuePanel";
+import { ForwardPanel } from "../forward/ForwardPanel";
+import { SystemdPanel } from "../systemd/SystemdPanel";
+import { CronPanel } from "../cron/CronPanel";
 import { terminalService } from "../../services/terminalService";
 import { dialogConfirm } from "../../lib/dialog";
 import i18n from "../../lib/i18n";
@@ -17,6 +20,9 @@ import {
   Gauge,
   FileCode,
   ListTree,
+  ArrowRightLeft,
+  Power,
+  Clock,
 } from "lucide-react";
 
 registerTool({
@@ -102,4 +108,31 @@ registerTool({
   defaultTitleKey: "dock:transfer_title",
   defaultSide: "bottom",
   render: (connId) => <TransferQueuePanel connectionId={connId} />,
+});
+
+registerTool({
+  id: "forward",
+  nameKey: "dock:tool_forward",
+  icon: ArrowRightLeft,
+  defaultTitleKey: "dock:tool_forward",
+  defaultSide: "right",
+  render: (connId) => <ForwardPanel connectionId={connId} />,
+});
+
+registerTool({
+  id: "systemd",
+  nameKey: "dock:tool_systemd",
+  icon: Power,
+  defaultTitleKey: "dock:tool_systemd",
+  defaultSide: "right",
+  render: (connId) => <SystemdPanel connectionId={connId} />,
+});
+
+registerTool({
+  id: "cron",
+  nameKey: "dock:tool_cron",
+  icon: Clock,
+  defaultTitleKey: "dock:tool_cron",
+  defaultSide: "right",
+  render: (connId) => <CronPanel connectionId={connId} />,
 });

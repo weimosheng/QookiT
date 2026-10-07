@@ -20,6 +20,7 @@ export interface PerformanceSample {
   cpu_cores: number;
   cpu_model: string;
   cpu_usage: number;
+  cpu_per_core: number[];
   mem_total: number;
   mem_used: number;
   mem_available: number;

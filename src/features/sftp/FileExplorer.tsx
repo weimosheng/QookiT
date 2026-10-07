@@ -901,7 +901,7 @@ export function FileExplorer({ connectionId }: FileExplorerProps) {
 
   return (
     <div className="flex h-full flex-col select-none">
-      <div className="flex items-center gap-1 border-b border-border bg-background px-2 py-1">
+      <div className="flex items-center gap-1 border-b border-border/50 bg-background/60 px-3 py-2 backdrop-blur-md">
         <button
           className="rounded p-1 hover:bg-default-soft"
           onClick={handleRefreshAll}

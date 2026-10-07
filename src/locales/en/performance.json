@@ -14,6 +14,8 @@
   "processes": "Processes",
   "cpu": "CPU",
   "cpu_cores": "{{cores}} cores · {{model}}",
+  "cpu_summary": "{{cores}} cores · avg {{avg}}% · max {{max}}%",
+  "cpu_collapse": "Hide core details",
   "memory": "Memory",
   "mem_available": "Available",
   "mem_cached": "Cached",

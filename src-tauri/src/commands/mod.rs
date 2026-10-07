@@ -1,9 +1,12 @@
 pub mod app;
 pub mod connection;
+pub mod cron;
+pub mod forward;
 pub mod groups;
 pub mod hosts;
 pub mod layout;
 pub mod performance;
 pub mod sftp;
 pub mod system_info;
+pub mod systemd;
 pub mod terminal;

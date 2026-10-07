@@ -45,8 +45,8 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
   return (
     <div className="flex h-full flex-col select-none">
       <div className="flex flex-1 flex-col overflow-hidden border-b border-border">
-        <div className="flex items-center gap-2 border-b border-border bg-background px-2 py-1">
-          <span className="text-sm font-medium">{t("favorites")}</span>
+        <div className="flex items-center gap-2 border-b border-border/50 bg-background/60 px-3 py-2 backdrop-blur-md">
+          <span className="text-xs font-medium text-foreground">{t("favorites")}</span>
           <span className="text-xs text-muted">({favorites.length})</span>
           <div className="flex-1" />
           <button
@@ -86,8 +86,8 @@ export function CommandPalette({ connectionId }: CommandPaletteProps) {
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-border bg-background px-2 py-1">
-          <span className="text-sm font-medium">{t("history")}</span>
+        <div className="flex items-center gap-2 border-b border-border/50 bg-background/60 px-3 py-2 backdrop-blur-md">
+          <span className="text-xs font-medium text-foreground">{t("history")}</span>
           <span className="text-xs text-muted">({history.length})</span>
           <div className="flex-1" />
           <button

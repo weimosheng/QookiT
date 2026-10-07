@@ -16,6 +16,9 @@ import zhTransfer from "../locales/zh/transfer.json";
 import zhDock from "../locales/zh/dock.json";
 import zhShortcut from "../locales/zh/shortcut.json";
 import zhCloseDialog from "../locales/zh/closeDialog.json";
+import zhForward from "../locales/zh/forward.json";
+import zhSystemd from "../locales/zh/systemd.json";
+import zhCron from "../locales/zh/cron.json";
 
 import enCommon from "../locales/en/common.json";
 import enTitlebar from "../locales/en/titlebar.json";
@@ -32,6 +35,9 @@ import enTransfer from "../locales/en/transfer.json";
 import enDock from "../locales/en/dock.json";
 import enShortcut from "../locales/en/shortcut.json";
 import enCloseDialog from "../locales/en/closeDialog.json";
+import enForward from "../locales/en/forward.json";
+import enSystemd from "../locales/en/systemd.json";
+import enCron from "../locales/en/cron.json";
 
 export const SUPPORTED_LOCALES = ["zh", "en"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -54,6 +60,9 @@ const resources = {
     dock: zhDock,
     shortcut: zhShortcut,
     closeDialog: zhCloseDialog,
+    forward: zhForward,
+    systemd: zhSystemd,
+    cron: zhCron,
   },
   en: {
     common: enCommon,
@@ -71,6 +80,9 @@ const resources = {
     dock: enDock,
     shortcut: enShortcut,
     closeDialog: enCloseDialog,
+    forward: enForward,
+    systemd: enSystemd,
+    cron: enCron,
   },
 };
 

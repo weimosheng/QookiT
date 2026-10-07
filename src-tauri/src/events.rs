@@ -5,6 +5,7 @@ pub const EVENT_CONNECTION_CLOSED: &str = "connection:closed";
 pub const EVENT_CONNECTION_LOG: &str = "connection:log";
 pub const EVENT_FILE_READ_PROGRESS: &str = "file:read_progress";
 pub const EVENT_FILE_TRANSFER_PROGRESS: &str = "file:transfer_progress";
+pub const EVENT_FORWARD_STATE: &str = "forward:state";
 /// 首次连接：请求用户确认服务器主机密钥（TOFU）。
 pub const EVENT_HOST_KEY_VERIFY: &str = "host-key:verify";
 /// 该确认请求已结束（信任 / 拒绝 / 超时 / 连接被取消），前端据此关闭对话框。
@@ -75,4 +76,18 @@ pub struct HostKeyVerifyPayload {
 #[derive(Clone, serde::Serialize)]
 pub struct HostKeyVerifyDonePayload {
     pub request_id: String,
+}
+
+/// 端口转发状态变更通知（启动/就绪/出错/停止/流量更新）。
+#[derive(Clone, serde::Serialize)]
+pub struct ForwardStatePayload {
+    pub connection_id: String,
+    pub forward_id: String,
+    /// `starting` | `active` | `error` | `stopped`
+    pub status: String,
+    /// 实际监听端口：远程转发 port=0 时由服务器选择，此处回传真实端口；其余同入参。
+    pub bound_port: u16,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
+    pub error: Option<String>,
 }

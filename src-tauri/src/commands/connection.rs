@@ -57,6 +57,7 @@ pub async fn connect_host(
         connection,
         sftp: Arc::new(RwLock::new(None)),
         terminals: Arc::new(Mutex::new(HashMap::new())),
+        forwards: Arc::new(Mutex::new(crate::ssh::ForwardManager::new())),
     });
 
     state
@@ -123,6 +124,10 @@ pub async fn disconnect_host(
         if let Some(s) = sftp.take() {
             drop(s);
         }
+    }
+    {
+        let mut forwards = entry.forwards.lock().await;
+        forwards.shutdown().await;
     }
     entry.connection.disconnect().await?;
     Ok(())

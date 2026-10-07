@@ -12,6 +12,10 @@ pub enum AppError {
     ConnectionNotFound(String),
     #[error("终端未找到: {0}")]
     TerminalNotFound(String),
+    #[error("转发未找到: {0}")]
+    ForwardNotFound(String),
+    #[error("转发错误: {0}")]
+    Forward(String),
     #[error("IO 错误: {0}")]
     Io(#[from] std::io::Error),
     #[error("序列化错误: {0}")]

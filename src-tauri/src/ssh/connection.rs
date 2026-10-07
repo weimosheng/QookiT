@@ -1,11 +1,15 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use russh::ChannelMsg;
-use russh::client::{self, Handle};
+use russh::client::{self, ChannelOpenHandle, Handle, Msg, Session};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
+use russh::ChannelOpenFailure;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::Mutex;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use tokio::sync::{Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 use tokio_util::sync::CancellationToken;
 
@@ -35,6 +39,10 @@ const HOST_KEY_CONFIRM_TIMEOUT: Duration = Duration::from_secs(120);
 /// exec 单路 stdout/stderr 的输出上限，防止 `cat /dev/urandom` 等命令撑爆内存。
 const MAX_EXEC_OUTPUT: usize = 64 * 1024 * 1024;
 
+/// 远程转发表：key = (远程监听地址, 端口)，value = (本地目标地址, 端口)。
+/// `server_channel_open_forwarded_tcpip` 据此把入站连接桥接回本地。
+type RemoteForwardMap = Arc<RwLock<HashMap<(String, u16), (String, u16)>>>;
+
 /// 客户端回调：负责主机密钥校验（TOFU）与握手阶段日志。
 struct ClientHandler {
     app: AppHandle,
@@ -43,6 +51,8 @@ struct ClientHandler {
     port: u16,
     /// 连接取消令牌：取消连接时一并放弃等待主机密钥确认，避免挂起。
     cancel: CancellationToken,
+    /// 远程转发规则表（与 Connection 共享同一份）。
+    remote_forwards: RemoteForwardMap,
 }
 
 impl ClientHandler {
@@ -126,6 +136,42 @@ impl ClientHandler {
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
+    /// 远程转发入站连接：查表找到本地目标，accept 后 spawn 双向桥接 task。
+    ///
+    /// 流量不在此处统计（入站连接与 ForwardManager 的 info 分属不同 task），
+    /// 远程转发的 bytes_in/out 在面板上以占位符呈现。
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let key = (connected_address.to_string(), connected_port as u16);
+        let target = self.remote_forwards.read().await.get(&key).cloned();
+        match target {
+            Some((local_host, local_port)) => {
+                reply.accept().await;
+                tokio::spawn(async move {
+                    match TcpStream::connect((local_host.as_str(), local_port)).await {
+                        Ok(stream) => bridge_inbound(channel, stream).await,
+                        Err(_) => {
+                            let _ = channel.close().await;
+                        }
+                    }
+                });
+                Ok(())
+            }
+            None => {
+                reply.reject(ChannelOpenFailure::AdministrativelyProhibited).await;
+                Ok(())
+            }
+        }
+    }
+
     /// 主机密钥校验：首次连接需用户确认后记录并放行，已记录且一致则放行，不一致则拒绝。
     async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
         let algorithm = host_key::algorithm(key);
@@ -189,6 +235,7 @@ impl client::Handler for ClientHandler {
     }
 }
 
+#[derive(Clone)]
 #[allow(dead_code)]
 pub struct Connection {
     pub id: String,
@@ -196,6 +243,7 @@ pub struct Connection {
     pub port: u16,
     pub username: String,
     handle: Arc<Mutex<Handle<ClientHandler>>>,
+    remote_forwards: RemoteForwardMap,
 }
 
 impl Connection {
@@ -224,12 +272,14 @@ impl Connection {
         emit_log("resolve", &format!("主机 {}:{} 已解析", host, port), "success");
 
         let config = Arc::new(client::Config::default());
+        let remote_forwards: RemoteForwardMap = Arc::new(RwLock::new(HashMap::new()));
         let handler = ClientHandler {
             app: app.clone(),
             host_id: host_id.to_string(),
             host: host.to_string(),
             port,
             cancel: cancel.clone(),
+            remote_forwards: remote_forwards.clone(),
         };
 
         emit_log("tcp", &format!("正在建立 TCP 连接 {}:{}...", host, port), "start");
@@ -329,6 +379,7 @@ impl Connection {
             port,
             username: username.to_string(),
             handle: Arc::new(Mutex::new(handle)),
+            remote_forwards,
         })
     }
 
@@ -440,4 +491,74 @@ impl Connection {
         .await;
         Ok(())
     }
+
+    /// 开一条 direct-tcpip 通道（本地/动态转发用）。
+    pub async fn open_direct_tcpip(
+        &self,
+        host_to_connect: &str,
+        port_to_connect: u16,
+        originator_address: String,
+        originator_port: u16,
+    ) -> AppResult<russh::Channel<Msg>> {
+        let handle = self.handle.lock().await;
+        let channel = handle
+            .channel_open_direct_tcpip(
+                host_to_connect.to_string(),
+                port_to_connect as u32,
+                originator_address,
+                originator_port as u32,
+            )
+            .await?;
+        Ok(channel)
+    }
+
+    /// 请求服务器监听指定地址端口（远程转发），返回实际监听端口。
+    pub async fn tcpip_forward(&self, address: &str, port: u16) -> AppResult<u16> {
+        let handle = self.handle.lock().await;
+        let bound = handle
+            .tcpip_forward(address.to_string(), port as u32)
+            .await?;
+        if bound > u16::MAX as u32 {
+            return Err(AppError::Forward(format!("服务器返回端口过大: {bound}")));
+        }
+        Ok(bound as u16)
+    }
+
+    /// 取消服务器的远程监听。
+    pub async fn cancel_tcpip_forward(&self, address: &str, port: u16) -> AppResult<()> {
+        let handle = self.handle.lock().await;
+        handle
+            .cancel_tcpip_forward(address.to_string(), port as u32)
+            .await?;
+        Ok(())
+    }
+
+    /// 登记一条远程转发规则，供 `server_channel_open_forwarded_tcpip` 查表桥接。
+    pub async fn register_remote_forward(
+        &self,
+        remote_addr: &str,
+        remote_port: u16,
+        local_host: &str,
+        local_port: u16,
+    ) {
+        self.remote_forwards
+            .write()
+            .await
+            .insert((remote_addr.to_string(), remote_port), (local_host.to_string(), local_port));
+    }
+
+    /// 移除一条远程转发规则。
+    pub async fn unregister_remote_forward(&self, remote_addr: &str, remote_port: u16) {
+        self.remote_forwards
+            .write()
+            .await
+            .remove(&(remote_addr.to_string(), remote_port));
+    }
+}
+
+/// 远程转发入站桥接：channel ↔ 本地 TcpStream 双向复制（不统计流量）。
+async fn bridge_inbound(channel: russh::Channel<Msg>, mut stream: TcpStream) {
+    let mut channel_stream = channel.into_stream();
+    let _ = tokio::io::copy_bidirectional(&mut stream, &mut channel_stream).await;
+    let _ = stream.shutdown().await;
 }
