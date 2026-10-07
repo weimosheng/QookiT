@@ -95,7 +95,7 @@ pub fn forget(host: &str, port: u16) -> AppResult<usize> {
         // 尽量沿用原文件权限，避免把 0600 变成默认权限。
         let _ = std::fs::set_permissions(&tmp, meta.permissions());
     }
-    std::fs::rename(&tmp, &path)?;
+    crate::fsutil::safe_rename(&tmp, &path)?;
     Ok(drop_lines.len())
 }
 

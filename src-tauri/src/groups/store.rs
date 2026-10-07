@@ -44,7 +44,7 @@ impl GroupStore {
         let path = self.file();
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, json)?;
-        std::fs::rename(&tmp, &path)?;
+        crate::fsutil::safe_rename(&tmp, &path)?;
         Ok(())
     }
 }

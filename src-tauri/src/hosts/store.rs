@@ -194,7 +194,7 @@ impl HostStore {
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, json)?;
         restrict_to_owner(&tmp);
-        std::fs::rename(&tmp, &path)?;
+        crate::fsutil::safe_rename(&tmp, &path)?;
         Ok(())
     }
 

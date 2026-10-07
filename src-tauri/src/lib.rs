@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod events;
+mod fsutil;
 mod groups;
 mod hosts;
 mod packaging;
